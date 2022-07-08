@@ -4,15 +4,19 @@
 
 // @ts-ignore
 const EIM = window.DE_RUB_EasyImagemap ?? {
-    init: initialize,
+    init: initialize
 };
 // @ts-ignore
 window.DE_RUB_EasyImagemap = EIM;
 
-var config = {}
+var config = {};
+var $editor = $();
+var JSMO = {};
+var map = null;
 
-function initialize(data) {
-    config = data;
+function initialize(config_data, jsmo_obj) {
+    config = config_data;
+    JSMO = jsmo_obj;
     if (config.mode == 'OnlineDesigner') {
         log('Online Designer', config);
         // @ts-ignore
@@ -24,6 +28,11 @@ function initialize(data) {
                 addOnlineDesignerButtons();
             }, 50);
         }
+        // Setup editor and events
+        $editor = $('.modal.easy-imagemap-editor');
+        $editor.find('[action]').on('click', handleEditorEvents);
+
+        // Add buttons
         addOnlineDesignerButtons();
     }
 }
@@ -47,8 +56,42 @@ function editImageMap(fieldName) {
     const w = $img.width();
     const h = $img.height();
     log('Dimensions:', h, w);
-
+    // @ts-ignore
+    $('.modal.easy-imagemap-editor').modal({ backdrop: 'static' });
+    showToast('Dialog opened');
 }
+
+function handleEditorEvents(e) {
+    const action = e.currentTarget.getAttribute('action') ?? ''
+    switch (action) {
+        case 'cancel':
+            map = null;
+            // @ts-ignore
+            $editor.modal('hide');
+            break;
+        case 'apply':
+            warn('Save - not implemented');
+            showToast('Not implemented', true)
+            break;
+    }
+}
+
+/**
+ * Shows a message in a toast
+ * @param {string} msg 
+ * @param {boolean} isError
+ */
+function showToast(msg, isError = false) {
+    const selector = isError ? '.easy-imagemap-editor.error-toast' : '.easy-imagemap-editor.success-toast';
+    var $toast = $(selector);
+    $toast.find('[data-content=toast]').html(msg);
+    if (isError) {
+        error($toast.find('[data-content=toast]').text());
+    }
+    // @ts-ignore
+    $toast.toast('show')
+}
+
 
 //#region -- Debug Logging
 
