@@ -1,0 +1,34 @@
+{
+    "name": "Easy Imagemap",
+    "namespace": "DE\\RUB\\EasyImagemapExternalModule",
+    "description": "A REDCap external module that converts images in descriptive fields into clickable image maps.",
+    "documentation": "README.md",
+    "authors": [
+        {
+            "name": "Günther Rezniczek",
+            "email": "guenther.rezniczek@rub.de",
+            "institution": "Ruhr-Universität Bochum"
+        }
+    ],
+    "framework-version": 9,
+    "permissions": [
+        "redcap_data_entry_form",
+        "redcap_survey_page",
+        "redcap_every_page_top"
+    ],
+    "system-settings": [
+    ],
+    "project-settings": [
+        {
+            "key": "javascript-debug",
+            "name": "Output debug information to the browser console",
+            "type": "checkbox"
+        }
+    ],
+    "compatibility": {
+        "php-version-min": "7.4.0",
+        "php-version-max": "",
+        "redcap-version-min": "12.2.10",
+        "redcap-version-max": ""
+     }
+}
