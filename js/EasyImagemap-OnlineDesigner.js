@@ -23,24 +23,43 @@ function initialize(config_data, jsmo_obj) {
         const EIM_reloadDesignTable = window.reloadDesignTable; 
         // @ts-ignore
         window.reloadDesignTable = function(form_name, js) {
+            log('Reloaded design table')
             EIM_reloadDesignTable(form_name, js);
-            setTimeout(function() {
-                addOnlineDesignerButtons();
-            }, 50);
+            updateFields();
+        }
+        // @ts-ignore
+        const EIM_insertRow = window.insertRow;
+        // @ts-ignore
+        window.insertRow = function(tblId, current_field, edit_question, is_last, moveToRowAfter, section_header, delete_row) {
+            log('New row inserted: ', current_field);
+            EIM_insertRow(tblId, current_field, edit_question, is_last, moveToRowAfter, section_header, delete_row);
+            updateFields();
         }
         // Setup editor and events
         $editor = $('.modal.easy-imagemap-editor');
-        $editor.find('[action]').on('click', handleEditorEvents);
+        $editor.find('[data-action]').on('click', handleEditorEvents);
 
         // Add buttons
         addOnlineDesignerButtons();
     }
 }
 
+function updateFields() {
+    JSMO.ajax('get-fields', config.form).then(function(data) {
+        log('Updated fields:', data)
+        config.fields = data
+        setTimeout(function() {
+            addOnlineDesignerButtons();
+        }, 0);
+    });
+}
+
 function addOnlineDesignerButtons() {
+    $('.eim-configure-button').remove();
     for (let fieldName of config.fields) {
         log('Adding button for field ' + fieldName);
-        const $btn = $('<div style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs">Configure Imagemap</button></div>');
+
+        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs">Configure Imagemap</button></div>');
         $btn.on('click', function(e) {
             e.preventDefault();
             editImageMap(fieldName);
@@ -52,20 +71,32 @@ function addOnlineDesignerButtons() {
 
 function editImageMap(fieldName) {
     log('Invoking editor for ' + fieldName);
+    $editor.find('.field-name').text(fieldName);
+    const $body = $editor.find('.modal-body.draw');
+    const paddingLeft = $body.css('padding-left');
+    const paddingTop = $body.css('padding-top');
     const $img = $('#design-' + fieldName + ' td.labelrc img[onload="fitImg(this);"]')
     const w = $img.width();
     const h = $img.height();
-    log('Dimensions:', h, w);
-    // @ts-ignore
-    $('.modal.easy-imagemap-editor').modal({ backdrop: 'static' });
+
+    const $svg = $(`<svg style="position:absolute;top:${paddingTop};left:${paddingLeft};background-color:red;opacity:50%;" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $body.append($img.clone()).append($svg);
+
+        // @ts-ignore
+    $editor.modal({ backdrop: 'static' });
     showToast('Dialog opened');
 }
 
 function handleEditorEvents(e) {
-    const action = e.currentTarget.getAttribute('action') ?? ''
+    const action = $(e.target).attr('data-action') ? $(e.target).attr('data-action') : $(e.target).parents('[data-action]').attr('data-action');
+    log('Editor action: ' + action, e)
     switch (action) {
         case 'cancel':
+            // Reset
             map = null;
+            $editor.find('.modal-body.empty-on-close').children().remove();
+            $editor.find('.remove-on-close').remove();
+            // Close editor
             // @ts-ignore
             $editor.modal('hide');
             break;
