@@ -107,7 +107,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 font-weight: bold;
             }
         </style>
-        <div class="easy-imagemap-editor modal fade" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
+        <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">

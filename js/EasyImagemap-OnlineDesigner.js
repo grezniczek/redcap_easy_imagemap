@@ -11,6 +11,7 @@ window.DE_RUB_EasyImagemap = EIM;
 
 var config = {};
 var $editor = $();
+var $svg = $();
 var showingEditor = false;
 var JSMO = {};
 var editorData = null;
@@ -97,12 +98,25 @@ function editImageMap() {
     const w = $img.width();
     const h = $img.height();
 
-    const $svg = $(`<svg style="position:absolute;top:${paddingTop};left:${paddingLeft};background-color:red;opacity:50%;" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg = $(`<svg style="position:absolute;top:${paddingTop};left:${paddingLeft};background-color:red;opacity:50%;" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg.on('pointerup pointerdown pointermove', handleSVGEvent);
     $body.append($img.clone()).append($svg);
     showWhenNoAreas();
         // @ts-ignore
     $editor.modal({ backdrop: 'static' });
 }
+
+
+
+function handleSVGEvent(e) {
+    if (currentArea == null) return;
+    const offset = $svg.offset() ?? { left: 0, top: 0 };
+    const x = (e.pageX - offset.left);
+    const y = (e.pageY - offset.top);
+
+    log('SVG Event', x, y);
+}
+
 
 function showWhenNoAreas() {
     const numAreas = editorData && editorData.map ? Object.keys(editorData.map) : 0;
