@@ -99,12 +99,13 @@ function editImageMap() {
 
     const $svg = $(`<svg style="position:absolute;top:${paddingTop};left:${paddingLeft};background-color:red;opacity:50%;" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
     $body.append($img.clone()).append($svg);
-
+    showWhenNoAreas();
         // @ts-ignore
     $editor.modal({ backdrop: 'static' });
 }
 
-function showWhenNoAreas(numAreas) {
+function showWhenNoAreas() {
+    const numAreas = editorData && editorData.map ? Object.keys(editorData.map) : 0;
     $editor.find('.show-when-no-areas')[numAreas == 0 ? 'show' : 'hide']();
 }
 
@@ -142,7 +143,7 @@ function executeEditorAction(action, $row) {
     switch (action) {
         case 'clear-areas': {
             $editor.find('tr.area').remove();
-            showWhenNoAreas(0);
+            showWhenNoAreas();
             setCurrentArea(null);
         }
         break;
@@ -172,7 +173,7 @@ function executeEditorAction(action, $row) {
             editorData.map[uuid] = {};
             $editor.find('tbody.area-list').append($row);
             setCurrentArea(uuid);
-            showWhenNoAreas(1);
+            showWhenNoAreas();
         }
         break;
         case 'remove-area': {
@@ -180,8 +181,7 @@ function executeEditorAction(action, $row) {
             if (id && editorData.map[id]) {
                 delete editorData.map[id];
                 $row.remove();
-                const numAreas = Object.keys(editorData.map).length;
-                showWhenNoAreas(numAreas);
+                showWhenNoAreas();
             }
             if (id == currentArea) {
                 setCurrentArea(null);
