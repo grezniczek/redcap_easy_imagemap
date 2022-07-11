@@ -1,6 +1,6 @@
-<?php
+<?php namespace DE\RUB\EasyImagemapExternalModule;
 
-namespace DE\RUB\EasyImagemapExternalModule;
+require_once "classes/ActionTagHelper.php";
 
 class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 {
@@ -50,10 +50,16 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
 
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id) {
-        if ($action == "get-fields") {
-            return $this->easy_GetQualifyingFields($project_id, $payload);
+        switch($action) {
+            case "get-fields":
+                return $this->easy_GetQualifyingFields($project_id, $payload);
+            
+            case "edit-field":
+                return $this->easy_GetFieldInfo($project_id, $payload);
+
+            default:
+                return null;
         }
-        return null;
     }
 
     #endregion
@@ -61,8 +67,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #region Online Designer Integration
 
-    private function easy_OnlineDesigner($project_id, $form)
-    {
+    private function easy_OnlineDesigner($project_id, $form) {
 
         $config = [
             "debug" => $this->js_debug,
@@ -111,6 +116,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         </h4>
                     </div>
                     <div class="modal-body draw empty-on-close" style="position:relative;">
+                        <!-- Image -->
                     </div>
                     <div class="modal-body buttons">
                         <p>
@@ -122,7 +128,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <button data-action="style-areas" class="btn btn-defaultrc btn-xs"><i class="fas fa-palette"></i> Style selected areas</button>
 
                     </div>
-                    <div class="modal-body assign empty-on-close">
+                    <div class="modal-body assign">
                         <table class="table table-hover table-sm">
                             <thead>
                                 <tr>
@@ -133,27 +139,24 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     <th scope="col">Action</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody class="area-list empty-on-close">
                             </tbody>
-                            <template class="row-template">
-                                <tr data-action="edit-row">
+                            <template data-eim-template="area-row">
+                                <tr data-area-id class="area" data-action="edit-area">
                                     <td>
                                         <div class="form-check form-check-inline">
-                                            <input class="form-check-input ml-2" type="radio" name="edit-area" value="">
+                                            <input class="form-check-input ml-2" type="radio" name="active-area" value="">
                                         </div>
                                     </td>
                                     <td>
-                                        <div data-action="select-row" class="form-check form-check-inline">
+                                        <div data-action="select-area" class="form-check form-check-inline">
                                             <input class="form-check-input ml-2" type="checkbox" value="">
                                         </div>
                                     </td>
                                     <td>
-                                        <div data-action="assign-target" class="form-inline">
-                                            <select>
-                                                <option selected>Choose...</option>
-                                                <option value="1">One</option>
-                                                <option value="2">Two</option>
-                                                <option value="3">Three</option>
+                                        <div class="form-inline">
+                                            <select data-action="assign-target" class="assignables">
+                                                <!-- Assignable field options -->
                                             </select>
                                         </div>
                                     </td>
@@ -226,8 +229,71 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #endregion
 
-    private function easy_GetQualifyingFields($project_id, $form)
-    {
+    private function easy_GetFieldInfo($project_id, $field_name) {
+        $Proj = self::easy_GetProject($project_id);
+        // Does the field exist?
+        if (!isset($Proj->metadata[$field_name])) {
+            throw "Field '$field_name' does not exist!";
+        }
+        $field = $Proj->metadata[$field_name];
+        $form_name = $field["form_name"];
+        // Does it have the action tag?
+        if (!in_array($field_name, $this->easy_GetQualifyingFields($project_id, $form_name), true)) {
+            throw "Field '$field_name' is not marked with " . self::ACTIONTAG . "!";
+        }
+        // Extract action tag parameter. The parameter is a JSON string that must be wrapped in single quotes!
+        $tag = array_pop(ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG));
+        $params = trim($tag["params"]);
+        if ($params == "") $params = "{}";
+        try {
+            $params = json_decode($params, true, 512, JSON_THROW_ON_ERROR);
+        }
+        catch(\Throwable $_) {
+            throw "Failed to parse action tag parameter (invalid JSON). Fix or remove/reset it manually!";
+        }
+        $assignables = array();
+        foreach ($Proj->forms[$form_name]["fields"] as $this_field_name => $_) {
+            if ($this_field_name == "{$form_name}_complete") continue; // Skip form status field
+            $this_field = $Proj->metadata[$this_field_name];
+            $this_type = $this_field["element_type"];
+            $this_icon = $this_type == "checkbox" ? "<i class=\"far fa-check-square\"></i>" : "<i class=\"fas fa-dot-circle\"></i>";
+            if (in_array($this_type, ["checkbox", "radio", "select", "yesno", "truefalse"])) {
+                $enum = parseEnum($this_field["element_enum"]);
+                if (count($enum)) {
+                    $options = [];
+                    if ($this_type != "checkbox") {
+                        $options[] = array(
+                            "code" => "{$this_field_name}::",
+                            "label" => "- (empty/reset)",
+                        );
+                    }
+                    foreach ($enum as $code => $label) {
+                        $options[] = array(
+                            "code" => "{$this_field_name}::{$code}",
+                            "label" => $label,
+                        );
+                    }
+                    $assignables[] = array(
+                        "name" => $this_field_name,
+                        "label" => strip_tags($this_field["element_label"]),
+                        "type" => $this_type,
+                        "icon" => $this_icon,
+                        "options" => $options,
+                    );
+                }
+            }
+        }
+        $data = [
+            "fieldName" => $field_name,
+            "formName" => $form_name,
+            "map" => empty($params) ? null : $params,
+            "assignables" => $assignables,
+        ];
+
+        return $data;
+    }
+
+    private function easy_GetQualifyingFields($project_id, $form) {
         $fields = [];
         $Proj = self::easy_GetProject($project_id);
         foreach ($Proj->forms[$form]["fields"] as $field_name => $_) {
@@ -245,8 +311,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     }
 
 
-    private static function easy_GetProject($project_id)
-    {
+    private static function easy_GetProject($project_id) {
         if (!isset(static::$PROJECT_CACHE[$project_id])) {
             static::$PROJECT_CACHE[$project_id] = new \Project($project_id);
         }

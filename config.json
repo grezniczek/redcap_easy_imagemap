@@ -17,7 +17,8 @@
         "redcap_every_page_top"
     ],
     "auth-jsmo-ajax-actions": [
-        "get-fields"
+        "get-fields",
+        "edit-field"
     ],
     "system-settings": [
     ],

@@ -11,8 +11,11 @@ window.DE_RUB_EasyImagemap = EIM;
 
 var config = {};
 var $editor = $();
+var showingEditor = false;
 var JSMO = {};
-var map = null;
+var editorData = null;
+var currentArea = null;
+
 
 function initialize(config_data, jsmo_obj) {
     config = config_data;
@@ -37,7 +40,7 @@ function initialize(config_data, jsmo_obj) {
         }
         // Setup editor and events
         $editor = $('.modal.easy-imagemap-editor');
-        $editor.find('[data-action]').on('click', handleEditorEvents);
+        $editor.find('[data-action]').on('click', handleEditorActionEvent);
 
         // Add buttons
         addOnlineDesignerButtons();
@@ -62,20 +65,35 @@ function addOnlineDesignerButtons() {
         const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs">Configure Imagemap</button></div>');
         $btn.on('click', function(e) {
             e.preventDefault();
-            editImageMap(fieldName);
+            $btn.prop('disabled', true);
+            if (!showingEditor) {
+                showingEditor = true;
+                JSMO.ajax('edit-field', fieldName).then(function(data) {
+                    editorData = data;
+                    if (editorData.map == null) {
+                        editorData.map = {};
+                    }
+                    editImageMap();
+                }).catch(function(err) {
+                    showToast(err, true);
+                }).finally(function() {
+                    $btn.prop('disabled', false);
+                    showingEditor = false;
+                });
+            }
             return false;
         })
         $('#design-' + fieldName + ' td.labelrc').append($btn);
     }
 }
 
-function editImageMap(fieldName) {
-    log('Invoking editor for ' + fieldName);
-    $editor.find('.field-name').text(fieldName);
+function editImageMap() {
+    log('Invoking editor for ' + editorData.fieldName, editorData);
+    $editor.find('.field-name').text(editorData.fieldName);
     const $body = $editor.find('.modal-body.draw');
     const paddingLeft = $body.css('padding-left');
     const paddingTop = $body.css('padding-top');
-    const $img = $('#design-' + fieldName + ' td.labelrc img[onload="fitImg(this);"]')
+    const $img = $('#design-' + editorData.fieldName + ' td.labelrc img[onload="fitImg(this);"]')
     const w = $img.width();
     const h = $img.height();
 
@@ -84,27 +102,133 @@ function editImageMap(fieldName) {
 
         // @ts-ignore
     $editor.modal({ backdrop: 'static' });
-    showToast('Dialog opened');
 }
 
-function handleEditorEvents(e) {
+function showWhenNoAreas(numAreas) {
+    $editor.find('.show-when-no-areas')[numAreas == 0 ? 'show' : 'hide']();
+}
+
+
+function setCurrentArea(id) {
+    currentArea = id ?? null;
+    if (currentArea != null) {
+        $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', true);
+    }
+    // TODO
+}
+
+function handleEditorActionEvent(e) {
     const action = $(e.target).attr('data-action') ? $(e.target).attr('data-action') : $(e.target).parents('[data-action]').attr('data-action');
-    log('Editor action: ' + action, e)
+    const $row = $(e.target).is('tr') ? $(e.target) : $(e.target).parents('tr[data-area-id]');
+    executeEditorAction(action, $row);
+}
+
+function toggleSelectAll() {
+    const numAreas = Object.keys(editorData.map).length;
+    if (numAreas == 0) return; // Nothing to do
+    const numSelected = $('tr[data-area-id] input[type="checkbox"]:checked').length;
+    if (numAreas > numSelected) {
+        // Select all
+        $('tr[data-area-id] input[type="checkbox"]').prop('checked', true)
+    }
+    else if (numSelected == numAreas) {
+        // Select none
+        $('tr[data-area-id] input[type="checkbox"]').prop('checked', false)
+    }
+}
+
+function executeEditorAction(action, $row) {
+    log('Editor action: ' + action)
     switch (action) {
-        case 'cancel':
+        case 'clear-areas': {
+            $editor.find('tr.area').remove();
+            showWhenNoAreas(0);
+            setCurrentArea(null);
+        }
+        break;
+        case 'style-area': {
+            const id = $row.attr('data-area-id');
+            log('Styling area ' + id);
+        }
+        break;
+        case 'style-areas': {
+            log('Styling areas ...');
+        }
+        break;
+        case 'toggle-select-all': {
+            toggleSelectAll();
+        }
+        break;
+        case 'edit-area': {
+            const id = $row.attr('data-area-id');
+            setCurrentArea(id);
+        }
+        break;
+        case 'add-area': {
+            const $row = getTemplate('area-row');
+            const uuid = generateUUID();
+            $row.attr('data-area-id', uuid);
+            $row.on('click', handleEditorActionEvent);
+            editorData.map[uuid] = {};
+            $editor.find('tbody.area-list').append($row);
+            setCurrentArea(uuid);
+            showWhenNoAreas(1);
+        }
+        break;
+        case 'remove-area': {
+            const id = $row.attr('data-area-id');
+            if (id && editorData.map[id]) {
+                delete editorData.map[id];
+                $row.remove();
+                const numAreas = Object.keys(editorData.map).length;
+                showWhenNoAreas(numAreas);
+            }
+            if (id == currentArea) {
+                setCurrentArea(null);
+            }
+        }
+        break;
+        case 'cancel': {
             // Reset
-            map = null;
-            $editor.find('.modal-body.empty-on-close').children().remove();
+            editorData = null;
+            $editor.find('.empty-on-close').children().remove();
             $editor.find('.remove-on-close').remove();
             // Close editor
             // @ts-ignore
             $editor.modal('hide');
-            break;
-        case 'apply':
-            warn('Save - not implemented');
-            showToast('Not implemented', true)
-            break;
+        }
+        break;
+        case 'apply': {
+            showToast('Save Changes - Not implemented yet!', true);
+            // executeEditorAction('cancel', $());
+        }
+        break;
     }
+}
+
+/**
+ * Gets a template by name and returns its jQuery representation
+ * @param {string} name 
+ * @returns {JQuery<HTMLElement>}
+ */
+ function getTemplate(name) {
+    return $($('[data-eim-template="' + name + '"]').html())
+}
+
+function generateUUID() {
+    var d1 = new Date().getTime(); //Timestamp
+    var d2 = ((typeof performance !== 'undefined') && performance.now && (performance.now() * 1000)) || 0; //Time in microseconds since page-load or 0 if unsupported
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var rnd = Math.random() * 16; // Random number between 0 and 16
+        if(d1 > 0) { // Use timestamp until depleted
+            rnd = (d1 + rnd)%16 | 0;
+            d1 = Math.floor(d1/16);
+        } else { // Use microseconds since page-load if supported
+            rnd = (d2 + rnd)%16 | 0;
+            d2 = Math.floor(d2/16);
+        }
+        return (c === 'x' ? rnd : (rnd & 0x3 | 0x8)).toString(16);
+    });
 }
 
 /**
