@@ -53,9 +53,12 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         switch($action) {
             case "get-fields":
                 return $this->easy_GetQualifyingFields($project_id, $payload);
-            
+
             case "edit-field":
                 return $this->easy_GetFieldInfo($project_id, $payload);
+
+            case "save":
+                return $this->easy_SaveData($project_id, $payload);
 
             default:
                 return null;
@@ -98,15 +101,94 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             .easy-imagemap-editor .area-style-sample {
                 display: inline-block;
                 width: 4rem;
-                height: 1.3rem;
-                background-color: blue;
+                height: 1.9rem;
+                background-color: aqua;
                 position: absolute;
                 margin-left: 10px;
             }
             .easy-imagemap-editor .field-name {
                 font-weight: bold;
             }
+            tr.area td {
+                padding: 0.2rem !important;
+            }
+            tr.area .form-check {
+                margin-top: 8px;
+            }
+            .assignables .badge {
+                font-weight: normal !important;
+            }
+            .assignables .badge i {
+                font-size: 70% !important;
+            }
+            .bootstrap-select .dropdown-menu li a {
+                font-size: 13px;
+            }
+            .bootstrap-select .dropdown-menu li a:hover {
+                font-size: 13px;
+            }
+            svg.eim-svg {
+                cursor: crosshair;
+                outline: 2px red dotted;
+                outline-offset: 1px;
+            }
+            svg.eim-svg.inactive {
+                cursor: not-allowed;
+                outline-color: gray;
+            }
+            svg.eim-svg.preview {
+                cursor: not-allowed;
+                outline: 2px var(--info) solid;
+            }
+            svg.eim-svg .anchor {
+                cursor: pointer;
+                stroke: black;
+                stroke-width: 1;
+                fill: yellow;
+                opacity: 0.7;
+            }
+            svg.eim-svg .anchor.active {
+                stroke-width: 2;
+                fill: red;
+            }
+            svg.eim-svg polygon {
+                stroke-width: 1;
+                stroke: orange;
+                fill: orange;
+                opacity: 0.3;
+            }
+            svg.eim-svg polygon.background {
+                cursor: pointer;
+                stroke-width: 1;
+                stroke: blueviolet;
+                fill: blueviolet;
+                opacity: 0.2;
+            }
+            svg.eim-svg polygon.background.active {
+                display: none;
+            }
+            svg.eim-svg.preview {
+                cursor: default;
+                outline: 2px var(--info) solid;
+            }
+            svg.eim-svg.preview polygon.background {
+                opacity: 0;
+                cursor: pointer;
+            }
+            svg.eim-svg.preview polygon.background.selected {
+                opacity: 0.6;
+            }
+            svg.eim-svg.preview polygon.background:not(.selected):hover {
+                opacity: 0.1;
+            }
+            #easy-imagemap-editor-tooltip {
+                background: cornsilk;
+                border: 1px solid black;
+                border-radius: 2px;
+                padding: 3px;
+            }
         </style>
+        <div id="easy-imagemap-editor-tooltip" style="position:absolute;z-index:10000;">TEST</div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
                 <div class="modal-content">
@@ -123,20 +205,20 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             Add or edit areas, then assign them to checkbox or radio field options.
                         </p>
                         <button data-action="add-area" class="btn btn-success btn-xs"><i class="fas fa-plus"></i> Add new area</button>
-                        <button data-action="clear-areas" class="btn btn-danger btn-xs"><i class="far fa-trash-alt"></i> Reset (remove all areas)</button>
+                        <button data-action="preview" class="btn btn-info btn-xs"><i class="fas fa-eye"></i> Preview</button>
+                        <button data-action="clear-areas" class="btn btn-link btn-xs text-danger"><i class="far fa-trash-alt"></i> Reset (remove all areas)</button>
                         |
-                        <button data-action="style-areas" class="btn btn-defaultrc btn-xs"><i class="fas fa-palette"></i> Style selected areas</button>
-
+                        <button data-action="style-areas" class="btn btn-default btn-xs"><i class="fas fa-palette"></i> Style selected areas</button>
                     </div>
                     <div class="modal-body assign">
-                        <table class="table table-hover table-sm">
+                        <table class="table table-sm">
                             <thead>
                                 <tr>
                                     <th scope="col"><i class="fas fa-pen-nib"></i> Edit</th>
-                                    <th scope="col"><a data-action="toggle-select-all" href="javascript:;">Select</a></th>
-                                    <th scope="col">Assignment</th>
+                                    <th scope="col"><a data-action="toggle-select-all" href="javascript:;"><i class="fas fa-check"></i> Select</a></th>
+                                    <th scope="col"><i class="fas fa-exchange-alt"></i> Assign</th>
                                     <th scope="col"><i class="fas fa-palette"></i> Style</th>
-                                    <th scope="col">Action</th>
+                                    <th scope="col"><i class="fas fa-bolt"></i> Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="area-list empty-on-close">
@@ -154,18 +236,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                         </div>
                                     </td>
                                     <td>
-                                        <div class="form-inline">
-                                            <select data-action="assign-target" class="assignables">
+                                        <div class="form-inline" data-action="assign-target">
+                                            <select data-live-search="true" class="form-control form-control-sm assignables" data-width="90%">
                                                 <!-- Assignable field options -->
                                             </select>
                                         </div>
                                     </td>
                                     <td>
-                                        <button data-action="style-area" class="btn btn-defaultrc btn-xs"><i class="fas fa-palette"></i> Style area</button>
+                                        <button data-action="style-area" class="btn btn-default btn-sm">Style area</button>
                                         <div data-action="none" class="area-style-sample"></div>
                                     </td>
                                     <td>
-                                        <button data-action="remove-area" class="btn btn-danger btn-xs"><i class="fas fa-close"></i> Remove</button>
+                                        <button data-action="remove-area" class="btn btn-default btn-sm"><i class="fas fa-close text-danger"></i></button>
                                     </td>
                                 </tr>
                             </template>
@@ -264,7 +346,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     if ($this_type != "checkbox") {
                         $options[] = array(
                             "code" => "{$this_field_name}::",
-                            "label" => "- (empty/reset)",
+                            "label" => "(empty/reset)",
                         );
                     }
                     foreach ($enum as $code => $label) {
@@ -283,6 +365,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
         }
+
+        // TODO - additional checks, matching targets, etc.
+
         $data = [
             "fieldName" => $field_name,
             "formName" => $form_name,
@@ -310,6 +395,32 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         return $fields;
     }
 
+    private function easy_SaveData($project_id, $data) {
+        $Proj = self::easy_GetProject($project_id);
+        $field_name = $data["fieldName"];
+        $form_name = $data["formName"];
+        $map = $data["map"];
+        $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
+        if (!in_array($field_name, $qualified_fields, true)) {
+            throw new \Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
+        }
+        $field_data = $Proj->metadata[$field_name];
+        $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
+        $search = $at["match"];
+        $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        $replace = $at["actiontag"]."=".$json;
+        $misc = checkNull(trim(str_replace($search, $replace, $field_data["misc"])));
+        $status = intval($Proj->project['status'] ?: 0);
+        $metadata_table = ($status > 0) ? \Vanderbilt\REDCap\Classes\ProjectDesigner::METADATA_TEMP_TABLE : \Vanderbilt\REDCap\Classes\ProjectDesigner::METADATA_TABLE;
+        $field_name = db_escape($field_name);
+        // Update field
+        $sql = "UPDATE `$metadata_table` SET `misc` = $misc WHERE `project_id` = $project_id AND `field_name` = '$field_name'";
+        $q = db_query($sql);
+        if (!$q) {
+            throw new \Exception("Failed to update the database with query: $sql. Error: ". db_error());
+        }
+        return true;
+    }
 
     private static function easy_GetProject($project_id) {
         if (!isset(static::$PROJECT_CACHE[$project_id])) {

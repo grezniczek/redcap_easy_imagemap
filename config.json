@@ -18,7 +18,8 @@
     ],
     "auth-jsmo-ajax-actions": [
         "get-fields",
-        "edit-field"
+        "edit-field",
+        "save"
     ],
     "system-settings": [
     ],

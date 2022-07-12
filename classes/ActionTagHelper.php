@@ -148,7 +148,8 @@ class ActionTagHelper
             if ($tag_only && ($tag != strtoupper($tag_only))) continue;
             $results[] = array(
                 'actiontag' => $tag,
-                'params' => $matches['params'][$i]
+                'params' => $matches['params'][$i],
+                'match' => $matches[0],
             );
         }
         return $results;
