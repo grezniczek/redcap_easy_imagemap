@@ -2,6 +2,8 @@
 
 use Exception;
 use RCView;
+use Survey;
+use UserRights;
 use Vanderbilt\REDCap\Classes\ProjectDesigner;
 
 require_once "classes/ActionTagHelper.php";
@@ -24,23 +26,43 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #region Hooks
 
-    function redcap_data_entry_form($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $repeat_instance = 1)
-    {
+    function redcap_data_entry_form($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $repeat_instance = 1) {
+        $map_fields = $this->easy_GetQualifyingFields($project_id, $instrument);
+        if (count($map_fields)) {
+            $Proj = $this->easy_GetProject($project_id);
+            $page_fields = array_keys($Proj->forms[$instrument]["fields"]);
+            $this->easy_DisplayImagemaps($project_id, $map_fields, $page_fields, false);
+        }
     }
 
-    function redcap_survey_page($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $survey_hash, $response_id = NULL, $repeat_instance = 1)
-    {
+    function redcap_survey_page($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $survey_hash, $response_id = NULL, $repeat_instance = 1) {
+        $Proj = $this->easy_GetProject($project_id);
+        // We need to find the fields that are displayed on this particular survey page
+        $survey_id = $Proj->forms[$instrument]["survey_id"];
+        $multi_page = $Proj->surveys[$survey_id]["question_by_section"] == "1";
+        $page = $multi_page ? intval($_GET["__page__"]) : 1;
+        list ($page_fields, $_) = Survey::getPageFields($instrument, $multi_page);
+        $page_fields = $page_fields[$page];
+        $map_fields = $this->easy_GetQualifyingFields($project_id, $instrument);
+        // Only consider the map fields that are actually on the survey page
+        $map_fields = array_intersect($map_fields, $page_fields);
+        if (count($map_fields)) {
+            $this->easy_DisplayImagemaps($project_id, $map_fields, $page_fields, true);
+        }
     }
 
-    function redcap_every_page_top($project_id = null)
-    {
-
-        if ($project_id == null) return; // Skip non-project context
-
+    function redcap_every_page_top($project_id = null) {
+        // Skip non-project context
+        if ($project_id == null) return; 
+        // Act based on the page that is being displayed
         $page = defined("PAGE") ? PAGE : "";
-
+        // Is there a user?
+        $user_name = $_SESSION["username"] ?? false;
+        $privileges = $user_name ? UserRights::getPrivileges($project_id, $user_name)[$project_id][$user_name] : false;
+        // Does the user have design rights?
+        $design_rights = $privileges && $privileges["design"] == "1";
         // Online Designer
-        if (strpos($page, "Design/online_designer.php") === 0) {
+        if (strpos($page, "Design/online_designer.php") === 0 && $design_rights) {
             $form = $_GET["page"] ?? "";
             if ($form) {
                 $Proj = self::easy_GetProject($project_id);
@@ -50,7 +72,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             }
         }
     }
-
 
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id) {
         switch($action) {
@@ -72,6 +93,89 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #region Data Entry / Survey Display
 
+    /**
+     * Injects the code necessary for rendering imagemaps on data entry or survey pages.
+     * @param string $project_id 
+     * @param string[] $map_fields 
+     * @param string[] $page_fields 
+     * @param boolean $inline_js 
+     */
+    private function easy_DisplayImagemaps($project_id, $map_fields, $page_fields, $inline_js) {
+        $config = array(
+            "version" => $this->VERSION,
+            "debug" => $this->js_debug,
+        );
+        
+        $Proj = $this->easy_GetProject($project_id);
+        
+        // Process all map fields and assemble metadata needed for map rendering
+        $warnings = [];
+        $errors = [];
+        $maps = [];
+        $targets = [];
+        foreach ($map_fields as $map_field_name) {
+            $mf_meta = $this->easy_GetFieldInfo($project_id, $map_field_name);
+            $maps_to_remove = [];
+            $map_targets = [];
+            foreach ($mf_meta["map"] as $map_idx => $map) {
+                list($target_field, $code) = explode("::", $map["target"], 2);
+                $target_field_info = $Proj->metadata[$target_field];
+                $target_type = $target_field_info["element_type"];
+                $target_enum = parseEnum($target_field_info["element_enum"]);
+                // Does the field exist?
+                if (in_array($target_field, $page_fields, true)) {
+                    // Does the code exist?
+                    if (($code == "" && $target_type != "checkbox") || array_key_exists($code, $target_enum)) {
+                        // All good.
+                    }
+                    else {
+                        $warnings[] = "Target field '$target_field' has no matching option for '$code'. The correspinding map has been removed.";
+                        $maps_to_remove[] = $map_idx;
+                    }
+                    $map_targets[$target_field] = [
+                        "type" => $target_type,
+                        "enum" => $target_enum,
+                    ];
+                }
+                else {
+                    $errors[] = "Target field '$target_field' is not on this data entry form or survey page.";
+                }
+            }
+            foreach ($maps_to_remove as $map_idx) {
+                unset($mf_meta["map"][$map_idx]);
+            }
+            if (count($mf_meta["map"] ?? [])) {
+                $maps[$map_field_name] = $mf_meta["map"];
+                $targets = array_merge($targets, $map_targets);
+            }
+        }
+        $config["maps"] = $maps;
+        $config["targets"] = $targets;
+        if ($this->js_debug) {
+            $config["warnings"] = array_unique($warnings);
+            $config["errors"] = array_unique($errors);
+        }
+
+        #region Script
+        $js_file = "js/EasyImagemap-Display.js";
+        if ($inline_js) {
+            $js = file_get_contents($this->getModulePath().$js_file);
+            $src = "";
+        }
+        else {
+            $js = "";
+            $src = " src=\"{$this->getUrl($js_file)}\"";
+        }
+        ?>
+        <script<?= $src ?>><?= $js ?></script>
+        <script>
+            $(function() {
+                DE_RUB_EasyImagemap.init(<?=json_encode($config)?>);
+            });
+        </script>
+        <?php
+        #endregion
+    }
 
     #endregion
 
@@ -90,7 +194,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $jsmo_name = $this->getJavascriptModuleObjectName();
 
         #region Scripts and HTML
-?>
+        ?>
         <script src="<?php print $this->getUrl('js/EasyImagemap-OnlineDesigner.js'); ?>"></script>
         <script>
             $(function() {
@@ -197,7 +301,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 padding: 3px;
             }
         </style>
-        <div id="easy-imagemap-editor-tooltip" style="position:absolute;z-index:10000;">TEST</div>
+        <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
             <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
                 <div class="modal-content">
