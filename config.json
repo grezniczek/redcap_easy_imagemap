@@ -18,8 +18,8 @@
     ],
     "auth-jsmo-ajax-actions": [
         "get-fields",
-        "edit-field",
-        "save"
+        "edit-map",
+        "save-map"
     ],
     "system-settings": [
     ],

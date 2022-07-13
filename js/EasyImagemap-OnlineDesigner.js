@@ -74,7 +74,7 @@ function addOnlineDesignerButtons() {
             $btn.prop('disabled', true);
             if (!showingEditor) {
                 showingEditor = true;
-                JSMO.ajax('edit-field', fieldName).then(function(data) {
+                JSMO.ajax('edit-map', fieldName).then(function(data) {
                     editorData = data;
                     if (editorData.map == null) {
                         editorData.map = {};
@@ -159,18 +159,20 @@ function areasToMap() {
     let i = 1;
     for (let id of ids) {
         const area = editorData.areas[id];
+        log(area);
         map[i] = {
             points: area.points ?? '',
             target: area.target ?? '',
-            label: getOptionLabel(area.target),
+            label: getOptionLabel(id, area.target),
         };
         i++;
     }
     return map;
 }
 
-function getOptionLabel(code) {
-    fore
+function getOptionLabel(id, code) {
+    // TODO
+    return '';
 }
 
 function createSVG(tag, attrs) {
@@ -554,7 +556,7 @@ function executeEditorAction(action, $row) {
                 formName: editorData.formName,
                 map: areasToMap(),
             }
-            JSMO.ajax('save', data).then(function() {
+            JSMO.ajax('save-map', data).then(function() {
                 showToast('Map data was successfully saved.');
                 executeEditorAction('cancel', $());
             }).catch(function(err) {

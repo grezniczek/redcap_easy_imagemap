@@ -1,5 +1,9 @@
 <?php namespace DE\RUB\EasyImagemapExternalModule;
 
+use Exception;
+use RCView;
+use Vanderbilt\REDCap\Classes\ProjectDesigner;
+
 require_once "classes/ActionTagHelper.php";
 
 class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
@@ -54,10 +58,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             case "get-fields":
                 return $this->easy_GetQualifyingFields($project_id, $payload);
 
-            case "edit-field":
+            case "edit-map":
                 return $this->easy_GetFieldInfo($project_id, $payload);
 
-            case "save":
+            case "save-map":
                 return $this->easy_SaveData($project_id, $payload);
 
             default:
@@ -255,10 +259,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <p class="show-when-no-areas"><i>No areas have been defined yet.</i></p>
                     </div>
                     <div class="modal-footer">
-                        <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?= \RCView::tt("global_53") // Cancel 
+                        <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel 
                                                                                                     ?></button>
-                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fas fa-save"></i> &nbsp; <?= \RCView::tt("report_builder_28") // Save Changes 
-                                                                                                                                    ?></button>
+                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fas fa-save"></i> &nbsp; <?= RCView::tt("report_builder_28") // Save Changes ?></button>
                     </div>
                 </div>
             </div>
@@ -274,10 +277,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     <svg class="bd-placeholder-img rounded mr-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice" focusable="false">
                         <rect width="100%" height="100%" fill="#28a745"></rect>
                     </svg>
-                    <strong class="mr-auto"><?= \RCView::tt("multilang_100") // Success 
-                                            ?></strong>
-                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?= \RCView::tt_attr("calendar_popup_01") // Close 
-                                                                                                    ?>">
+                    <strong class="mr-auto"><?= RCView::tt("multilang_100") // Success ?></strong>
+                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?= RCView::tt_attr("calendar_popup_01") // Close ?>">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -291,10 +292,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     <svg class="bd-placeholder-img rounded mr-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice" focusable="false">
                         <rect width="100%" height="100%" fill="#dc3545"></rect>
                     </svg>
-                    <strong class="mr-auto"><?= \RCView::tt("global_01") // ERROR 
-                                            ?></strong>
-                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?= \RCView::tt_attr("calendar_popup_01") // Close 
-                                                                                                    ?>">
+                    <strong class="mr-auto"><?= RCView::tt("global_01") // ERROR ?></strong>
+                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?= RCView::tt_attr("calendar_popup_01") // Close ?>">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -311,6 +310,14 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #endregion
 
+    #region Private Helpers
+
+    /**
+     * Gets field and other metadata needed for the Online Designer integration
+     * @param string $project_id 
+     * @param string $field_name 
+     * @return array 
+     */
     private function easy_GetFieldInfo($project_id, $field_name) {
         $Proj = self::easy_GetProject($project_id);
         // Does the field exist?
@@ -365,19 +372,20 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
         }
-
-        // TODO - additional checks, matching targets, etc.
-
-        $data = [
+        return [
             "fieldName" => $field_name,
             "formName" => $form_name,
             "map" => empty($params) ? null : $params,
             "assignables" => $assignables,
         ];
-
-        return $data;
     }
 
+    /**
+     * Gets a list of qualifying field on the specified form (i.e. descriptive with displayed image and the action tag)
+     * @param string $project_id 
+     * @param string $form 
+     * @return string[] 
+     */
     private function easy_GetQualifyingFields($project_id, $form) {
         $fields = [];
         $Proj = self::easy_GetProject($project_id);
@@ -395,6 +403,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         return $fields;
     }
 
+    /**
+     * Saves designer data in a field's Action Tag / Field Annotation ('misc')
+     * @param string $project_id 
+     * @param Array $data 
+     * @return true 
+     * @throws Exception Throws in case of failure
+     */
     private function easy_SaveData($project_id, $data) {
         $Proj = self::easy_GetProject($project_id);
         $field_name = $data["fieldName"];
@@ -411,21 +426,29 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $replace = $at["actiontag"]."=".$json;
         $misc = checkNull(trim(str_replace($search, $replace, $field_data["misc"])));
         $status = intval($Proj->project['status'] ?: 0);
-        $metadata_table = ($status > 0) ? \Vanderbilt\REDCap\Classes\ProjectDesigner::METADATA_TEMP_TABLE : \Vanderbilt\REDCap\Classes\ProjectDesigner::METADATA_TABLE;
+        $metadata_table = ($status > 0) ? ProjectDesigner::METADATA_TEMP_TABLE : ProjectDesigner::METADATA_TABLE;
         $field_name = db_escape($field_name);
         // Update field
         $sql = "UPDATE `$metadata_table` SET `misc` = $misc WHERE `project_id` = $project_id AND `field_name` = '$field_name'";
         $q = db_query($sql);
         if (!$q) {
-            throw new \Exception("Failed to update the database with query: $sql. Error: ". db_error());
+            throw new Exception("Failed to update the database with query: $sql. Error: ". db_error());
         }
         return true;
     }
 
+    /**
+     * Gets a (cached) instance of the Project class
+     * @param string|int $project_id 
+     * @return \Project
+     */
     private static function easy_GetProject($project_id) {
         if (!isset(static::$PROJECT_CACHE[$project_id])) {
             static::$PROJECT_CACHE[$project_id] = new \Project($project_id);
         }
         return static::$PROJECT_CACHE[$project_id];
     }
+
+    #endregion
+
 }
