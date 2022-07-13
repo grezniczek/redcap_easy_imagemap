@@ -138,7 +138,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     ];
                 }
                 else {
-                    $errors[] = "Target field '$target_field' is not on this data entry form or survey page.";
+                    $errors[] = "Target field '$target_field' is not on this data entry form or survey page. The correspinding map has been removed.";
+                    $maps_to_remove[] = $map_idx;
                 }
             }
             foreach ($maps_to_remove as $map_idx) {
