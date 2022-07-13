@@ -114,7 +114,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $errors = [];
         $maps = [];
         $targets = [];
-        foreach ($map_fields as $map_field_name) {
+        foreach ($map_fields as $map_field_name => $edoc_hash) {
             $mf_meta = $this->easy_GetFieldInfo($project_id, $map_field_name);
             $maps_to_remove = [];
             $map_targets = [];
@@ -147,6 +147,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 unset($mf_meta["map"][$map_idx]);
             }
             if (count($mf_meta["map"] ?? [])) {
+                $maps[$map_field_name]["hash"] = $edoc_hash;
                 $maps[$map_field_name]["areas"] = $mf_meta["map"];
                 $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
                 $targets = array_merge($targets, $map_targets);
@@ -432,14 +433,14 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $Proj = self::easy_GetProject($project_id);
         // Does the field exist?
         if (!isset($Proj->metadata[$field_name])) {
-            throw "Field '$field_name' does not exist!";
+            throw new Exception("Field '$field_name' does not exist!");
         }
         $field = $Proj->metadata[$field_name];
         $form_name = $field["form_name"];
         $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
         // Does it have the action tag?
         if (!array_key_exists($field_name, $qualified_fields)) {
-            throw "Field '$field_name' is not marked with " . self::ACTIONTAG . "!";
+            throw new Exception("Field '$field_name' is not marked with " . self::ACTIONTAG . "!");
         }
         // Extract action tag parameter. The parameter is a JSON string that must be wrapped in single quotes!
         $tag = array_pop(ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG));
@@ -449,7 +450,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $params = json_decode($params, true, 512, JSON_THROW_ON_ERROR);
         }
         catch(\Throwable $_) {
-            throw "Failed to parse action tag parameter (invalid JSON). Fix or remove/reset it manually!";
+            throw new Exception("Failed to parse action tag parameter (invalid JSON). Fix or remove/reset it manually!");
         }
         $assignables = array();
         foreach ($Proj->forms[$form_name]["fields"] as $this_field_name => $_) {
@@ -536,7 +537,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $map = $data["map"];
         $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
         if (!array_key_exists($field_name, $qualified_fields)) {
-            throw new \Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
+            throw new Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
         }
         $field_data = $Proj->metadata[$field_name];
         $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
