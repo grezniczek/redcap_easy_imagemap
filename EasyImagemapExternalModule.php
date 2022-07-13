@@ -1,6 +1,7 @@
 <?php namespace DE\RUB\EasyImagemapExternalModule;
 
 use Exception;
+use Files;
 use RCView;
 use Survey;
 use UserRights;
@@ -45,7 +46,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $page_fields = $page_fields[$page];
         $map_fields = $this->easy_GetQualifyingFields($project_id, $instrument);
         // Only consider the map fields that are actually on the survey page
-        $map_fields = array_intersect($map_fields, $page_fields);
+        $map_fields = array_intersect_key($map_fields, array_flip($page_fields));
         if (count($map_fields)) {
             $this->easy_DisplayImagemaps($project_id, $map_fields, $page_fields, true);
         }
@@ -435,8 +436,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         }
         $field = $Proj->metadata[$field_name];
         $form_name = $field["form_name"];
+        $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
         // Does it have the action tag?
-        if (!in_array($field_name, $this->easy_GetQualifyingFields($project_id, $form_name), true)) {
+        if (!array_key_exists($field_name, $qualified_fields)) {
             throw "Field '$field_name' is not marked with " . self::ACTIONTAG . "!";
         }
         // Extract action tag parameter. The parameter is a JSON string that must be wrapped in single quotes!
@@ -490,6 +492,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         return [
             "fieldName" => $field_name,
             "formName" => $form_name,
+            "hash" => $qualified_fields[$field_name],
             "map" => empty($params) ? [] : $params,
             "bounds" => $bounds,
             "assignables" => $assignables,
@@ -500,7 +503,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
      * Gets a list of qualifying field on the specified form (i.e. descriptive with displayed image and the action tag)
      * @param string $project_id 
      * @param string $form 
-     * @return string[] 
+     * @return array 
      */
     private function easy_GetQualifyingFields($project_id, $form) {
         $fields = [];
@@ -513,7 +516,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 $field_meta["edoc_display_img"] == "1" &&
                 strpos($field_meta["misc"], self::ACTIONTAG) !== false
             ) {
-                $fields[] = $field_name;
+                $fields[$field_name] = Files::docIdHash($field_meta["edoc_id"], $Proj->getProjectSalt($project_id));
             }
         }
         return $fields;
@@ -532,7 +535,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $form_name = $data["formName"];
         $map = $data["map"];
         $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
-        if (!in_array($field_name, $qualified_fields, true)) {
+        if (!array_key_exists($field_name, $qualified_fields)) {
             throw new \Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
         }
         $field_data = $Proj->metadata[$field_name];

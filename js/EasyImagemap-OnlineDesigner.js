@@ -65,7 +65,7 @@ function updateFields() {
 
 function addOnlineDesignerButtons() {
     $('.eim-configure-button').remove();
-    for (let fieldName of config.fields) {
+    for (let fieldName of Object.keys(config.fields)) {
         log('Adding button for field ' + fieldName);
 
         const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs">Configure Imagemap</button></div>');
@@ -98,7 +98,7 @@ function editImageMap() {
     const $body = $editor.find('.modal-body.draw');
     const paddingLeft = $body.css('padding-left');
     const paddingTop = $body.css('padding-top');
-    const $img = $('#design-' + editorData.fieldName + ' td.labelrc img[onload="fitImg(this);"]')
+    const $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]')
     const w = $img.width();
     const h = $img.height();
     // Build the assignable box
