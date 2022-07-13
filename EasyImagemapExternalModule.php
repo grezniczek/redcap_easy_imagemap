@@ -8,7 +8,6 @@ require_once "classes/ActionTagHelper.php";
 
 class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 {
-
     private $js_debug = false;
     static $PROJECT_CACHE = array();
     const ACTIONTAG = "@EASYIMAGEMAP";
@@ -71,6 +70,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #endregion
 
+    #region Data Entry / Survey Display
+
+
+    #endregion
 
     #region Online Designer Integration
 
@@ -85,6 +88,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         ];
         $this->initializeJavascriptModuleObject();
         $jsmo_name = $this->getJavascriptModuleObjectName();
+
+        #region Scripts and HTML
 ?>
         <script src="<?php print $this->getUrl('js/EasyImagemap-OnlineDesigner.js'); ?>"></script>
         <script>
@@ -259,9 +264,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <p class="show-when-no-areas"><i>No areas have been defined yet.</i></p>
                     </div>
                     <div class="modal-footer">
-                        <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel 
+                        <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?=RCView::tt("global_53") // Cancel 
                                                                                                     ?></button>
-                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fas fa-save"></i> &nbsp; <?= RCView::tt("report_builder_28") // Save Changes ?></button>
+                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fas fa-save"></i> &nbsp; <?=RCView::tt("report_builder_28") // Save Changes ?></button>
                     </div>
                 </div>
             </div>
@@ -277,8 +282,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     <svg class="bd-placeholder-img rounded mr-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice" focusable="false">
                         <rect width="100%" height="100%" fill="#28a745"></rect>
                     </svg>
-                    <strong class="mr-auto"><?= RCView::tt("multilang_100") // Success ?></strong>
-                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?= RCView::tt_attr("calendar_popup_01") // Close ?>">
+                    <strong class="mr-auto"><?=RCView::tt("multilang_100") // Success ?></strong>
+                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?=RCView::tt_attr("calendar_popup_01") // Close ?>">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -292,8 +297,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     <svg class="bd-placeholder-img rounded mr-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice" focusable="false">
                         <rect width="100%" height="100%" fill="#dc3545"></rect>
                     </svg>
-                    <strong class="mr-auto"><?= RCView::tt("global_01") // ERROR ?></strong>
-                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?= RCView::tt_attr("calendar_popup_01") // Close ?>">
+                    <strong class="mr-auto"><?=RCView::tt("global_01") // ERROR ?></strong>
+                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?=RCView::tt_attr("calendar_popup_01") // Close ?>">
                         <span aria-hidden="true">&times;</span>
                     </button>
                 </div>
@@ -303,10 +308,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 <?php
         #endregion
 
+        #endregion
     }
-
-
-
 
     #endregion
 
