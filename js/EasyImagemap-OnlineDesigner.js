@@ -128,6 +128,7 @@ function editImageMap() {
     setMode('');
     editorData.anchors = new Array();
     editorData.areas = areasFromMap(editorData.map);
+
     // Add the rows
     for (let id of Object.keys(editorData.areas)) {
         addTableRow(id);
@@ -554,6 +555,7 @@ function executeEditorAction(action, $row) {
             const data = {
                 fieldName: editorData.fieldName,
                 formName: editorData.formName,
+                bounds: editorData.bounds,
                 map: areasToMap(),
             }
             JSMO.ajax('save-map', data).then(function() {

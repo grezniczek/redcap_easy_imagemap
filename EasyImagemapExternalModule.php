@@ -146,7 +146,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 unset($mf_meta["map"][$map_idx]);
             }
             if (count($mf_meta["map"] ?? [])) {
-                $maps[$map_field_name] = $mf_meta["map"];
+                $maps[$map_field_name]["areas"] = $mf_meta["map"];
+                $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
                 $targets = array_merge($targets, $map_targets);
             }
         }
@@ -480,10 +481,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
         }
+        $bounds = [
+            "width" => $params["_w"] ?? 0,
+            "height" => $params["_h"] ?? 0,
+        ];
+        unset($params["_w"]);
+        unset($params["_h"]);
         return [
             "fieldName" => $field_name,
             "formName" => $form_name,
-            "map" => empty($params) ? null : $params,
+            "map" => empty($params) ? [] : $params,
+            "bounds" => $bounds,
             "assignables" => $assignables,
         ];
     }
@@ -530,6 +538,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $field_data = $Proj->metadata[$field_name];
         $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
         $search = $at["match"];
+        $map["_w"] = $data["bounds"]["width"];
+        $map["_h"] = $data["bounds"]["height"];
         $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"]."=".$json;
         $misc = checkNull(trim(str_replace($search, $replace, $field_data["misc"])));
