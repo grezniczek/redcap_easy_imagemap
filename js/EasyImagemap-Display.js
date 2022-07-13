@@ -13,11 +13,18 @@
 
     function initialize(config_data) {
         config = config_data;
-        log('Initialzed', config);
+        log('Initialzing ...', config);
+
+        for (const mapField in config.maps) {
+            const map = config.maps[mapField];
+            
+        }
+
+        log('Initializiation complete.');
     }
 
 
-    
+
 
 
 //#region -- Debug Logging
