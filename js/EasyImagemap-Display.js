@@ -1,6 +1,9 @@
 // Easy Imagemap EM
+// Dr. Günther Rezniczek, Ruhr-Universität Bochum, Marien Hospital Herne
 // @ts-check
 ;(function() {
+
+//#region Init global object and define local variables
 
 // @ts-ignore
 const EIM = window.DE_RUB_EasyImagemap ?? {
@@ -9,11 +12,25 @@ const EIM = window.DE_RUB_EasyImagemap ?? {
 // @ts-ignore
 window.DE_RUB_EasyImagemap = EIM;
 
-var config = {};
+/** Configuration data supplied from the server */
+let config = {};
+
+/** Maximum number of attempts to obtain a reference to a map's <img> element */
 const retryCount = 5;
+
+/** Amount of milliseconds between retries when trying to get a reference to a map's <img> element */
 const retryTime = 100;
+
+/** Original 'radioResetVal()' function */
 let EIM_radioResetVal = null;
+
+/** Original 'saveLocking()' function */
 let EIM_saveLocking = null;
+
+/** Holds data required for two-way data binding */
+const twoWayRadioResetData = {};
+
+//#endregion
 
 /**
  * Implements the public init method.
@@ -22,9 +39,8 @@ let EIM_saveLocking = null;
  */
 function initialize(config_data) {
     config = config_data;
-    const startTime = performance.now();
     log('Initialzing ...', config);
-
+    const startTime = performance.now();
     // Initialize all maps
     for (const mapField in config.maps) {
         try {
@@ -36,7 +52,6 @@ function initialize(config_data) {
     }
     // Add interactions with form elements
     addInteractivity();
-
     // Hook into form locking logic
     if (typeof window['saveLocking'] != 'undefined') {
         EIM_saveLocking = window['saveLocking'];
@@ -49,12 +64,10 @@ function initialize(config_data) {
             }
         };
     }
-
     const endTime = performance.now();
     const duration = endTime - startTime;
     log('Initializiation complete (' + duration.toFixed(1) + 'ms).');
 }
-
 
 /**
  * Sets up an imagemap for a descriptive field with an image
@@ -124,6 +137,45 @@ function addMap(field, map, retry) {
         $svg.hide();
     });
 }
+
+/**
+ * Updates an area (adds or removes the 'selected' class)
+ * @param {string} field 
+ * @param {string} id 
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ */
+function updateAreaClass(field, id, type, target, code) {
+    log('Updating area', field, target, code);
+    if (['yesno','truefalse','radio','select'].includes(type)) {
+        // Unselect all for same target in case of mutually exclusive types
+        $('svg[data-field="' + field + '"] polygon[data-target="' + target + '"]').each(function() {
+            this.classList.remove('selected');
+        });
+    }
+    if ((id ?? '').length > 0) {
+        setTimeout(function() {
+            $('#' + id)[0].classList[checkTargetValue(type, target, code) ? 'add' : 'remove']('selected');
+        }, 0);
+    }
+}
+
+/**
+ * Creates an SVG element and sets its attributes
+ * @param {string} tag 
+ * @param {Object<string,string>} attrs 
+ * @returns {SVGElement}
+ */
+function createSVG(tag, attrs) {
+    const el= document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const key in attrs) {
+        el.setAttribute(key, attrs[key]);
+    }
+    return el;
+}
+
+//#region Basic Form Interaction
 
 /**
  * Adds interactive features, i.e. binding to checkboxes, radio buttons, dropdowns
@@ -232,29 +284,6 @@ function checkTargetDisabled(type, target, code) {
 }
 
 /**
- * Updates an area (adds or removes the 'selected' class)
- * @param {string} field 
- * @param {string} id 
- * @param {string} type 
- * @param {string} target 
- * @param {string} code 
- */
-function updateAreaClass(field, id, type, target, code) {
-    log('Updating area', field, target, code);
-    if (['yesno','truefalse','radio','select'].includes(type)) {
-        // Unselect all for same target in case of mutually exclusive types
-        $('svg[data-field="' + field + '"] polygon[data-target="' + target + '"]').each(function() {
-            this.classList.remove('selected');
-        });
-    }
-    if ((id ?? '').length > 0) {
-        setTimeout(function() {
-            $('#' + id)[0].classList[checkTargetValue(type, target, code) ? 'add' : 'remove']('selected');
-        }, 0);
-    }
-}
-
-/**
  * Updates a form value after an area has been clicked.
  * This works by first triggering an click on the respective target control and then
  * updating the area based on the target control's value.
@@ -297,8 +326,18 @@ function setTargetValue(field, id, type, target, code) {
     }
 }
 
-const twoWayRadioResetData = {};
+//#endregion
 
+//#region Two-Way Binding
+
+/**
+ * Adds two-way binding between map areas and form elements
+ * @param {string} field 
+ * @param {string} id 
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ */
 function setupTwoWayBinding(field, id, type, target, code) {
     switch (type) {
         case 'checkbox': {
@@ -348,8 +387,12 @@ function setupTwoWayBinding(field, id, type, target, code) {
     }
 }
 
+/**
+ * Helper function to apply two-way binding for 'reset' links
+ * @param {string} target 
+ */
 function twoWayRadioReset(target) {
-    log('Radio reset logic:', twoWayRadioResetData, target);
+    log('Applying a radio reset', twoWayRadioResetData, target);
     if (typeof twoWayRadioResetData[target] != 'undefined') {
         for (const field in twoWayRadioResetData[target]) {
             for (const id in twoWayRadioResetData[target][field]) {
@@ -362,6 +405,11 @@ function twoWayRadioReset(target) {
     }
 }
 
+/**
+ * Sets up a MutationObserver to track changes of hidden elements
+ * @param {HTMLElement} el 
+ * @param {string} attributeName 
+ */
 function trackChange(el, attributeName = 'value') {
     // @ts-ignore
     const MO = window.MutationObserver || window.WebKitMutationObserver;
@@ -374,23 +422,19 @@ function trackChange(el, attributeName = 'value') {
     observer.observe(el, { attributes: true });
 }
 
-function setPolyStyle(poly, styles) {
-    for (const key in styles) {
-        poly.setAttribute(key, styles[key]);
-    }
-}
+//#endregion
 
-function createSVG(tag, attrs) {
-    const el= document.createElementNS('http://www.w3.org/2000/svg', tag);
-    setPolyStyle(el, attrs);
-    return el;
-}
+//#region Helpers
 
+/**
+ * Generates a UUID
+ * @returns {string}
+ */
 function generateUUID() {
-    var d1 = new Date().getTime(); //Timestamp
-    var d2 = ((typeof performance !== 'undefined') && performance.now && (performance.now() * 1000)) || 0; //Time in microseconds since page-load or 0 if unsupported
+    let d1 = new Date().getTime(); //Timestamp
+    let d2 = ((typeof performance !== 'undefined') && performance.now && (performance.now() * 1000)) || 0; //Time in microseconds since page-load or 0 if unsupported
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var rnd = Math.random() * 16; // Random number between 0 and 16
+        let rnd = Math.random() * 16; // Random number between 0 and 16
         if(d1 > 0) { // Use timestamp until depleted
             rnd = (d1 + rnd)%16 | 0;
             d1 = Math.floor(d1/16);
@@ -402,7 +446,9 @@ function generateUUID() {
     });
 }
 
-//#region -- Debug Logging
+//#endregion
+
+//#region Debug Logging
 
 /**
  * Logs a message to the console when in debug mode
