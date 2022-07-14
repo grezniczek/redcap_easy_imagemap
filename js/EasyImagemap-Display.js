@@ -12,6 +12,7 @@ window.DE_RUB_EasyImagemap = EIM;
 var config = {};
 const retryCount = 5;
 const retryTime = 100;
+let EIM_radioResetVal = null;
 
 function initialize(config_data) {
     config = config_data;
@@ -51,8 +52,8 @@ function addMap(field, map, retry) {
         return;
     }
     // Build SVG to overlay on image - we need to wrap the image first
-    const $wrapper = $img.wrap('<div style="position:relative;display:inline-block;"></div>').css('display', 'block').css('max-width','100%').css('height','auto').parent();
-    const $svg = $('<svg tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="position:absolute;top:0;left:0" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
+    const $wrapper = $img.wrap('<div style="position:relative;"></div>').css('max-width','100%').css('height','auto').parent();
+    const $svg = $('<svg tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;position:absolute;top:0;left:0" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
     $wrapper.append($svg);
     const svg = $svg[0];
     // Add the areas and styles
@@ -60,36 +61,176 @@ function addMap(field, map, retry) {
     for (const areaIdx in map.areas) {
         const id = 'eim-'+generateUUID();
         const area = map.areas[areaIdx];
-        const target_code = area.target.split('::', 2);
-        const target = target_code[0] ?? '';
-        const code = target_code[1] ?? '';
+        const type = config.targets[area.target];
         const poly = createSVG('polygon', { 
             points: area.points,
             id: id,
+            'data-target': area.target
         });
-        poly.addEventListener('pointerdown', function(e) { handleSVGEvent(e, field, id, target, code); });
+        poly.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, area.target, area.code); });
 
         styles.push(
             '#' + id + ' {stroke-widht:1;stroke:orange;fill:orange;opacity:0.01;cursor:pointer;}\n' + 
             '#' + id + ':hover {opacity:0.1;}\n' + 
-            '#' + id + '.selected {opacity:0.5;}\n'
+            '#' + id + '.selected {opacity:0.4;}\n'
         );
         svg.append(poly);
+        if (checkTargetValue(type, area.target, area.code)) {
+            poly.classList.add('selected');
+        }
+        if (map['two-way']) {
+            setupTwoWayBinding(field, id, type, area.target, area.code);
+            if (EIM_radioResetVal == null) {
+                // Hijack radioResetVal
+                // @ts-ignore
+                EIM_radioResetVal = window.radioResetVal;
+                // @ts-ignore
+                window.radioResetVal = function (this_field, this_form) {
+                    EIM_radioResetVal(this_field, this_form);
+                    twoWayRadioReset(this_field);
+                }
+            }
+        }
     }
     $('body').append('<style>' + styles.join('') + '</style>')
+    // Show the SVG overlay once the image has completed loading (otherwise, the imagemap might show first)
+    $img.one('load', function() {
+        $svg.show();
+    }).each(function() {
+        // In case the image was already completed, we need to trigger the load event
+        // @ts-ignore
+        if (this.complete) {
+            $img.trigger('load');
+        }
+    });
+    // Hide the SVG to prevent the overlay from showing while the image is already gone 
+    $(window).on('beforeunload', function() {
+        $svg.hide();
+    });
     log('Set up field \'' + field + '\' (after ' + (retryCount - retry) + ' retries):', map, $img, $svg);
 }
 
+function checkTargetValue(type, target, code) {
+    let val = '';
+    switch (type) {
+        case 'checkbox': {
+            val = ($('input[name="__chk__' + target + '_RC_' + code + '"]').val() ?? '').toString();
+        }
+        break;
+        case 'yesno':
+        case 'truefalse':
+        case 'radio': {
+            val = document.forms['form'][target].value;
+        }
+        break;
+        case 'select': {
+            
+        }
+        break;
+    }
+    log('Checking target value for ' + target + '(' + code + ') (type: ' + type + '): [' + val + ']');
+    return val == code;
+}
 
-function handleSVGEvent(e, field, id, target, code) {
-    log ('Handling event for \'' + field + '\' (' + id + '):', target, code, e);
-    const poly = e.target;
-    if (poly.classList.contains('selected')) {
-        poly.classList.remove('selected');
+function updateAreaClass(field, id, type, target, code) {
+    log('Updating area', field, target, code);
+    if (['yesno','truefalse','radio'].includes(type)) {
+        // Unselect all for same target in case of mutually exclusive types
+        $('#'+ id).siblings('[data-target="' + target + '"]').each(function() {
+            this.classList.remove('selected');
+        });
     }
-    else {
-        poly.classList.add('selected');
+    setTimeout(function() {
+        $('#' + id)[0].classList[checkTargetValue(type, target, code) ? 'add' : 'remove']('selected');
+    }, 0);
+}
+
+function setTargetValue(field, id, type, target, code) {
+    switch (type) {
+        case 'checkbox': {
+            $('#id-__chk__' + target + '_RC_' + code).trigger('click');
+            updateAreaClass(field, id, type, target, code);
+        }
+        break;
+        case 'yesno':
+        case 'truefalse':
+        case 'radio': {
+            if (code == '') {
+                // @ts-ignore
+                radioResetVal(target, 'form');
+                document.forms['form'][target].value = '';
+            }
+            else {
+                $('#opt-' + target + '_' + code).trigger('click');
+            }
+            updateAreaClass(field, id, type, target, code);
+        }
+        break;
+        case 'select': {
+
+        }
+        break;
     }
+}
+
+const twoWayRadioResetData = {};
+
+function setupTwoWayBinding(field, id, type, target, code) {
+    switch (type) {
+        case 'checkbox': {
+            const $el = $('input[name="__chk__' + target + '_RC_' + code + '"]')
+            $el.on('change', function() {
+                updateAreaClass(field, id, type, target, code);
+            });
+            trackChange($el[0], 'value');
+        }
+        break;
+        case 'yesno':
+        case 'truefalse':
+        case 'radio': {
+            if (code != '') {
+                const $el = $('input[type="radio"][name="' + target + '___radio"]');
+                $el.on('change', function() {
+                    updateAreaClass(field, id, type, target, code);
+                });
+            }
+            else {
+                if (typeof twoWayRadioResetData[target] == 'undefined') twoWayRadioResetData[target] = {};
+                if (typeof twoWayRadioResetData[target][field] == 'undefined') twoWayRadioResetData[target][field] = {};
+                twoWayRadioResetData[target][field][id] = {
+                    type: type,
+                    code: code,
+                };
+            }
+        }
+        break;
+    }
+}
+
+function twoWayRadioReset(target) {
+    log('Radio reset logic:', twoWayRadioResetData, target);
+    if (typeof twoWayRadioResetData[target] != 'undefined') {
+        for (const field in twoWayRadioResetData[target]) {
+            for (const id in twoWayRadioResetData[target][field]) {
+                const code = twoWayRadioResetData[target][field][id].code;
+                const type = twoWayRadioResetData[target][field][id].type;
+                document.forms['form'][target].value = '';
+                updateAreaClass(field, id, type, target, code);
+            }
+        }
+    }
+}
+
+function trackChange(el, attributeName = 'value') {
+    // @ts-ignore
+    const MO = window.MutationObserver || window.WebKitMutationObserver;
+    const observer = new MO(function(mutations, observer) {
+        if(mutations[0].attributeName == attributeName) {
+            log('Mutation triggered', el)
+            $(el).trigger('change');
+        }
+    });
+    observer.observe(el, { attributes: true });
 }
 
 function setPolyStyle(poly, styles) {
