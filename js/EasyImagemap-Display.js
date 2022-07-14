@@ -14,8 +14,14 @@ const retryCount = 5;
 const retryTime = 100;
 let EIM_radioResetVal = null;
 
+/**
+ * Implements the public init method.
+ * Sets config and calls the logic to wire up each image map.
+ * @param {object} config_data 
+ */
 function initialize(config_data) {
     config = config_data;
+    const startTime = performance.now();
     log('Initialzing ...', config);
 
     for (const mapField in config.maps) {
@@ -26,7 +32,9 @@ function initialize(config_data) {
             error('Failed to setup map for field \'' + mapField + '\'.', ex);
         }
     }
-    log('Initializiation complete.');
+    const endTime = performance.now();
+    const duration = endTime - startTime;
+    log('Initializiation complete (' + duration.toFixed(1) + 'ms).');
 }
 
 
@@ -51,9 +59,11 @@ function addMap(field, map, retry) {
         }
         return;
     }
+    log('Setting up field \'' + field + '\' (after ' + (retryCount - retry) + ' retries):', map);
+
     // Build SVG to overlay on image - we need to wrap the image first
     const $wrapper = $img.wrap('<div style="position:relative;"></div>').css('max-width','100%').css('height','auto').parent();
-    const $svg = $('<svg tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;position:absolute;top:0;left:0" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
+    const $svg = $('<svg data-field="' + field + '" tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;position:absolute;top:0;left:0" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
     $wrapper.append($svg);
     const svg = $svg[0];
     // Add the areas and styles
@@ -65,7 +75,8 @@ function addMap(field, map, retry) {
         const poly = createSVG('polygon', { 
             points: area.points,
             id: id,
-            'data-target': area.target
+            'data-target': area.target,
+            'data-code': area.code,
         });
         poly.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, area.target, area.code); });
 
@@ -107,9 +118,15 @@ function addMap(field, map, retry) {
     $(window).on('beforeunload', function() {
         $svg.hide();
     });
-    log('Set up field \'' + field + '\' (after ' + (retryCount - retry) + ' retries):', map, $img, $svg);
 }
 
+/**
+ * Checks the value associated with an imagemap area
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ * @returns {boolean} Indicates whether the area should be selected
+ */
 function checkTargetValue(type, target, code) {
     let val = '';
     switch (type) {
@@ -124,7 +141,7 @@ function checkTargetValue(type, target, code) {
         }
         break;
         case 'select': {
-            
+            val = ($('select[name="' + target + '"]').val() ?? '').toString();
         }
         break;
     }
@@ -132,19 +149,39 @@ function checkTargetValue(type, target, code) {
     return val == code;
 }
 
+/**
+ * Updates an area (adds or removes the 'selected' class)
+ * @param {string} field 
+ * @param {string} id 
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ */
 function updateAreaClass(field, id, type, target, code) {
     log('Updating area', field, target, code);
-    if (['yesno','truefalse','radio'].includes(type)) {
+    if (['yesno','truefalse','radio','select'].includes(type)) {
         // Unselect all for same target in case of mutually exclusive types
-        $('#'+ id).siblings('[data-target="' + target + '"]').each(function() {
+        $('svg[data-field="' + field + '"] polygon[data-target="' + target + '"]').each(function() {
             this.classList.remove('selected');
         });
     }
-    setTimeout(function() {
-        $('#' + id)[0].classList[checkTargetValue(type, target, code) ? 'add' : 'remove']('selected');
-    }, 0);
+    if ((id ?? '').length > 0) {
+        setTimeout(function() {
+            $('#' + id)[0].classList[checkTargetValue(type, target, code) ? 'add' : 'remove']('selected');
+        }, 0);
+    }
 }
 
+/**
+ * Updates a form value after an area has been clicked.
+ * This works by first triggering an click on the respective target control and then
+ * updating the area based on the target control's value.
+ * @param {string} field 
+ * @param {string} id 
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ */
 function setTargetValue(field, id, type, target, code) {
     switch (type) {
         case 'checkbox': {
@@ -167,7 +204,12 @@ function setTargetValue(field, id, type, target, code) {
         }
         break;
         case 'select': {
-
+            const $select = $('select[name="' + target + '"]');
+            $select.val(code);
+            // In case this is an autocomplete dropdown, set the value of the text input
+            const text = $select.find('option[value="' + code + '"]').text();
+            $('#rc-ac-input_' + target).val(text);
+            updateAreaClass(field, id, type, target, code);
         }
         break;
     }
@@ -201,6 +243,23 @@ function setupTwoWayBinding(field, id, type, target, code) {
                     type: type,
                     code: code,
                 };
+            }
+        }
+        break;
+        case 'select': {
+            const $el = $('select[name="' + target + '"]');
+            const bound = $el.attr('data-two-way-bound') ?? '';
+            // Already bound?
+            if (!bound.includes(':' + field)) {
+                // Note that binding has been established
+                $el.attr('data-two-way-bound', bound + ':' + field);
+                $el.on('change', function() {
+                    const $svg = $('svg[data-field="' + field + '"]');
+                    const this_target = ($el.attr('name') ?? '').toString();
+                    const this_code = ($el.val() ?? '').toString();
+                    const this_id = $svg.find('polygon[data-target="' + this_target + '"][data-code="' + this_code + '"]').attr('id') ?? ''
+                    updateAreaClass(field, this_id, type, this_target, this_code);
+                });
             }
         }
         break;
