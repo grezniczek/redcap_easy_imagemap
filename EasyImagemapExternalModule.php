@@ -321,11 +321,15 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <p>
                             Add or edit areas, then assign them to checkbox or radio field options.
                         </p>
-                        <button data-action="add-area" class="btn btn-success btn-xs"><i class="fas fa-plus"></i> Add new area</button>
-                        <button data-action="preview" class="btn btn-info btn-xs"><i class="fas fa-eye"></i> Preview</button>
-                        <button data-action="clear-areas" class="btn btn-link btn-xs text-danger"><i class="far fa-trash-alt"></i> Reset (remove all areas)</button>
+                        <button data-action="add-area" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add new area</button>
+                        <button data-action="preview" class="btn btn-info btn-sm"><i class="fas fa-eye"></i> Preview</button>
                         |
-                        <button data-action="style-areas" class="btn btn-default btn-xs"><i class="fas fa-palette"></i> Style selected areas</button>
+                        <button data-action="style-areas" class="btn btn-default btn-sm"><i class="fas fa-palette"></i> Style selected areas</button>
+                        |
+                        <label for="eim-two-way">
+                            Two way updates:
+                            <input class="form-check-input ml-2" type="checkbox" id="eim-two-way" name="two-way" style="margin-top:0.2rem;" value="">
+                        </label>
                     </div>
                     <div class="modal-body assign">
                         <table class="table table-sm">
@@ -333,7 +337,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <tr>
                                     <th scope="col"><i class="fas fa-pen-nib"></i> Edit</th>
                                     <th scope="col"><a data-action="toggle-select-all" href="javascript:;"><i class="fas fa-check"></i> Select</a></th>
-                                    <th scope="col"><i class="fas fa-exchange-alt"></i> Assign</th>
+                                    <th scope="col">
+                                        <i class="fas fa-exchange-alt"></i> Field
+                                    </th>
                                     <th scope="col"><i class="fas fa-palette"></i> Style</th>
                                     <th scope="col"><i class="fas fa-bolt"></i> Actions</th>
                                 </tr>
@@ -372,8 +378,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <p class="show-when-no-areas"><i>No areas have been defined yet.</i></p>
                     </div>
                     <div class="modal-footer">
-                        <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?=RCView::tt("global_53") // Cancel 
-                                                                                                    ?></button>
+                        <button data-action="clear-areas" class="btn btn-link btn-xs text-danger" style="margin-right:auto;"><i class="far fa-trash-alt"></i> Reset (remove all areas)</button>
+                        <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?=RCView::tt("global_53") // Cancel ?></button>
                         <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fas fa-save"></i> &nbsp; <?=RCView::tt("report_builder_28") // Save Changes ?></button>
                     </div>
                 </div>
@@ -488,14 +494,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "width" => $params["_w"] ?? 0,
             "height" => $params["_h"] ?? 0,
         ];
+        $twoway = $params["_two-way"] ?? false;
         unset($params["_w"]);
         unset($params["_h"]);
+        unset($params["_two-way"]);
         return [
             "fieldName" => $field_name,
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
             "map" => empty($params) ? [] : $params,
             "bounds" => $bounds,
+            "two-way" => $twoway,
             "assignables" => $assignables,
         ];
     }
@@ -544,6 +553,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $search = $at["match"];
         $map["_w"] = $data["bounds"]["width"];
         $map["_h"] = $data["bounds"]["height"];
+        $map["_two-way"] = $data["two-way"];
         $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"]."=".$json;
         $misc = checkNull(trim(str_replace($search, $replace, $field_data["misc"])));

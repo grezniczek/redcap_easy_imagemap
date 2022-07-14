@@ -136,6 +136,8 @@ function editImageMap() {
     }
     // UI updates
     showWhenNoAreas();
+    // Set two-way checkbox
+    $editor.find('input[name=two-way]').prop('checked', editorData['two-way']);
     // Some logging
     log('Invoking editor for ' + editorData.fieldName, editorData);
     // Finally, show the dialog
@@ -556,6 +558,7 @@ function executeEditorAction(action, $row) {
                 fieldName: editorData.fieldName,
                 formName: editorData.formName,
                 bounds: editorData.bounds,
+                'two-way': $editor.find('input[name=two-way]').prop('checked'),
                 map: areasToMap(),
             }
             JSMO.ajax('save-map', data).then(function() {
