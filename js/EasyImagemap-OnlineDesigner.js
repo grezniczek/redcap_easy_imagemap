@@ -1,4 +1,5 @@
-
+// Easy Imagemap EM
+// Dr. Günther Rezniczek, Ruhr-Universität Bochum, Marien Hospital Herne
 // @ts-check
 ;(function() {
 
@@ -573,6 +574,9 @@ function executeEditorAction(action, $row) {
     }
 }
 
+
+//#region Helpers
+
 /**
  * Gets a template by name and returns its jQuery representation
  * @param {string} name 
@@ -582,11 +586,15 @@ function executeEditorAction(action, $row) {
     return $($('[data-eim-template="' + name + '"]').html())
 }
 
+/**
+ * Generates a UUID
+ * @returns {string}
+ */
 function generateUUID() {
-    var d1 = new Date().getTime(); //Timestamp
-    var d2 = ((typeof performance !== 'undefined') && performance.now && (performance.now() * 1000)) || 0; //Time in microseconds since page-load or 0 if unsupported
+    let d1 = new Date().getTime(); //Timestamp
+    let d2 = ((typeof performance !== 'undefined') && performance.now && (performance.now() * 1000)) || 0; //Time in microseconds since page-load or 0 if unsupported
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        var rnd = Math.random() * 16; // Random number between 0 and 16
+        let rnd = Math.random() * 16; // Random number between 0 and 16
         if(d1 > 0) { // Use timestamp until depleted
             rnd = (d1 + rnd)%16 | 0;
             d1 = Math.floor(d1/16);
@@ -614,8 +622,9 @@ function showToast(msg, isError = false) {
     $toast.toast('show')
 }
 
+//#endregion
 
-//#region -- Debug Logging
+//#region Debug Logging
 
 /**
  * Logs a message to the console when in debug mode
