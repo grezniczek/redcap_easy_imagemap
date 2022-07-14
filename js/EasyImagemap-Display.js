@@ -13,6 +13,7 @@ var config = {};
 const retryCount = 5;
 const retryTime = 100;
 let EIM_radioResetVal = null;
+let EIM_saveLocking = null;
 
 /**
  * Implements the public init method.
@@ -24,6 +25,7 @@ function initialize(config_data) {
     const startTime = performance.now();
     log('Initialzing ...', config);
 
+    // Initialize all maps
     for (const mapField in config.maps) {
         try {
             addMap(mapField, config.maps[mapField], retryCount);
@@ -32,6 +34,22 @@ function initialize(config_data) {
             error('Failed to setup map for field \'' + mapField + '\'.', ex);
         }
     }
+    // Add interactions with form elements
+    addInteractivity();
+
+    // Hook into form locking logic
+    if (typeof window['saveLocking'] != 'undefined') {
+        EIM_saveLocking = window['saveLocking'];
+        window['saveLocking'] = function(lock_action, esign_action) { 
+            EIM_saveLocking(lock_action, esign_action);
+            if (lock_action = '0') {
+                setTimeout(function() {
+                    addInteractivity();
+                }, 100);
+            }
+        };
+    }
+
     const endTime = performance.now();
     const duration = endTime - startTime;
     log('Initializiation complete (' + duration.toFixed(1) + 'ms).');
@@ -71,6 +89,7 @@ function addMap(field, map, retry) {
     for (const areaIdx in map.areas) {
         const id = 'eim-'+generateUUID();
         const area = map.areas[areaIdx];
+        area.id = id;
         const type = config.targets[area.target];
         const poly = createSVG('polygon', { 
             points: area.points,
@@ -78,7 +97,6 @@ function addMap(field, map, retry) {
             'data-target': area.target,
             'data-code': area.code,
         });
-        poly.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, area.target, area.code); });
 
         styles.push(
             '#' + id + ' {stroke-widht:1;stroke:orange;fill:orange;opacity:0.01;cursor:pointer;}\n' + 
@@ -88,19 +106,6 @@ function addMap(field, map, retry) {
         svg.append(poly);
         if (checkTargetValue(type, area.target, area.code)) {
             poly.classList.add('selected');
-        }
-        if (map['two-way']) {
-            setupTwoWayBinding(field, id, type, area.target, area.code);
-            if (EIM_radioResetVal == null) {
-                // Hijack radioResetVal
-                // @ts-ignore
-                EIM_radioResetVal = window.radioResetVal;
-                // @ts-ignore
-                window.radioResetVal = function (this_field, this_form) {
-                    EIM_radioResetVal(this_field, this_form);
-                    twoWayRadioReset(this_field);
-                }
-            }
         }
     }
     $('body').append('<style>' + styles.join('') + '</style>')
@@ -118,6 +123,55 @@ function addMap(field, map, retry) {
     $(window).on('beforeunload', function() {
         $svg.hide();
     });
+}
+
+/**
+ * Adds interactive features, i.e. binding to checkboxes, radio buttons, dropdowns
+ */
+function addInteractivity() {
+    for (const field in config.maps) {
+        try {
+            const map = config.maps[field];
+            for (const areaIdx in map.areas) {
+                const area = map.areas[areaIdx];
+                const id = area.id;
+                const type = config.targets[area.target];
+                if (!checkTargetDisabled(type, area.target, area.code)) {
+                    setupInteractivity(field, id, type, area.target, area.code, map['two-way']);
+                }
+            }
+        }
+        catch(ex) {
+            error('Failed to add interactive features for map field \'' + field + '\'.', ex);
+        }
+    }
+}
+
+/**
+ * Sets up interactive features for a single area of a map
+ * @param {string} field 
+ * @param {string} id 
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ * @param {boolean} twoWay Whether to enable two-way binding (changing input elements updates the map)
+ */
+function setupInteractivity(field, id, type, target, code, twoWay) {
+    const poly = $('#' + id)[0];
+    poly.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
+    if (twoWay) {
+        setupTwoWayBinding(field, id, type, target, code);
+        if (EIM_radioResetVal == null) {
+            // Hijack radioResetVal
+            // @ts-ignore
+            EIM_radioResetVal = window.radioResetVal;
+            // @ts-ignore
+            window.radioResetVal = function (this_field, this_form) {
+                EIM_radioResetVal(this_field, this_form);
+                twoWayRadioReset(this_field);
+            }
+        }
+    }
 }
 
 /**
@@ -147,6 +201,34 @@ function checkTargetValue(type, target, code) {
     }
     log('Checking target value for ' + target + '(' + code + ') (type: ' + type + '): [' + val + ']');
     return val == code;
+}
+
+/**
+ * Checks whether the target is disabled
+ * @param {string} type 
+ * @param {string} target 
+ * @param {string} code 
+ * @returns {boolean}
+ */
+function checkTargetDisabled(type, target, code) {
+    switch (type) {
+        case 'checkbox': {
+            return $('input[name="__chk__' + target + '_RC_' + code + '"]').prop('disabled');
+        }
+        case 'yesno':
+        case 'truefalse':
+        case 'radio': {
+            if (code == '') {
+                // Special handling of reset link - check any option instead
+                return  $('input[id*="opt-' + target + '_"]').prop('disabled');
+            }
+            return $('#opt-' + target + '_' + code).prop('disabled');
+        }
+        case 'select': {
+            return $('select[name="' + target + '"]').prop('disabled');
+        }
+    }
+    return true;
 }
 
 /**
