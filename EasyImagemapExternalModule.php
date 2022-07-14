@@ -113,12 +113,12 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $warnings = [];
         $errors = [];
         $maps = [];
+        $areas = [];
         $targets = [];
         foreach ($map_fields as $map_field_name => $edoc_hash) {
             $mf_meta = $this->easy_GetFieldInfo($project_id, $map_field_name);
-            $maps_to_remove = [];
             $map_targets = [];
-            foreach ($mf_meta["map"] as $map_idx => $map) {
+            foreach ($mf_meta["map"] as $_ => $map) {
                 list($target_field, $code) = explode("::", $map["target"], 2);
                 $target_field_info = $Proj->metadata[$target_field];
                 $target_type = $target_field_info["element_type"];
@@ -127,29 +127,28 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 if (in_array($target_field, $page_fields, true)) {
                     // Does the code exist?
                     if (($code == "" && $target_type != "checkbox") || array_key_exists($code, $target_enum)) {
-                        // All good.
+                        $areas[] = [
+                            "points" => $map["points"],
+                            "target" => $target_field,
+                            "code" => $code,
+                            "tooltip" => $map["tooltip"] ?? false,
+                            "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],
+                        ];
                     }
                     else {
                         $warnings[] = "Target field '$target_field' has no matching option for '$code'. The correspinding map has been removed.";
-                        $maps_to_remove[] = $map_idx;
                     }
-                    $map_targets[$target_field] = [
-                        "type" => $target_type,
-                        "enum" => $target_enum,
-                    ];
+                    $map_targets[$target_field] = $target_type;
                 }
                 else {
                     $errors[] = "Target field '$target_field' is not on this data entry form or survey page. The correspinding map has been removed.";
-                    $maps_to_remove[] = $map_idx;
                 }
-            }
-            foreach ($maps_to_remove as $map_idx) {
-                unset($mf_meta["map"][$map_idx]);
             }
             if (count($mf_meta["map"] ?? [])) {
                 $maps[$map_field_name]["hash"] = $edoc_hash;
-                $maps[$map_field_name]["areas"] = $mf_meta["map"];
+                $maps[$map_field_name]["areas"] = $areas;
                 $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
+                $maps[$map_field_name]["two-way"] = $mf_meta["two-way"];
                 $targets = array_merge($targets, $map_targets);
             }
         }
