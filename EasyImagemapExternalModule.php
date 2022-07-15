@@ -303,6 +303,14 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 border-radius: 2px;
                 padding: 3px;
             }
+            div.eim-style-button {
+                margin-bottom: -8px;
+                display: inline-block;
+                width: 40px;
+                height: 22px;
+                outline-offset: 1px;
+                outline: 1px black dotted;
+            }
         </style>
         <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
@@ -317,18 +325,31 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <!-- Image -->
                     </div>
                     <div class="modal-body buttons">
-                        <p>
+                        <div>
+                            <button data-action="add-area" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add new area</button>
+                            <button data-action="preview" class="btn btn-info btn-sm"><i class="fas fa-eye"></i> Preview</button>
+                            |
+                            <div class="form-check form-check-inline">
+                                <label class="form-check-label" for="eim-two-way">Two way updates:</label>
+                                <input class="form-check-input ml-2" type="checkbox" id="eim-two-way" name="two-way" style="margin-top:0.2rem;" value="">
+                            </div>
+                            <div class="form-check form-check-inline ml-3">
+                                <i class="fas fa-palette"></i>&nbsp;Style:
+                            </div>
+                        </div>
+                        <div class="mt-1">
+                            <button data-action="style-regular" class="btn btn-light btn-sm">Regular:</button>
+                            <div class="eim-style-button" id="eim-style-regular"></div>
+                            <button data-action="style-hover" class="btn btn-light btn-sm">Hover:</button> 
+                            <div class="eim-style-button" id="eim-style-hover"></div>
+                            <button data-action="style-selected" class="btn btn-light btn-sm">Selected:</button> 
+                            <div class="eim-style-button" id="eim-style-selected"></div>
+                            <span class="ml-1">&mdash;</span>
+                            <button data-action="style-apply" class="btn btn-default btn-sm">Apply to selected areas</button>
+                        </div>
+                        <div class="mt-2">
                             Add or edit areas, then assign them to checkbox or radio field options.
-                        </p>
-                        <button data-action="add-area" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add new area</button>
-                        <button data-action="preview" class="btn btn-info btn-sm"><i class="fas fa-eye"></i> Preview</button>
-                        |
-                        <button data-action="style-areas" class="btn btn-default btn-sm"><i class="fas fa-palette"></i> Style selected areas</button>
-                        |
-                        <label for="eim-two-way">
-                            Two way updates:
-                            <input class="form-check-input ml-2" type="checkbox" id="eim-two-way" name="two-way" style="margin-top:0.2rem;" value="">
-                        </label>
+                        </div>
                     </div>
                     <div class="modal-body assign">
                         <table class="table table-sm">
