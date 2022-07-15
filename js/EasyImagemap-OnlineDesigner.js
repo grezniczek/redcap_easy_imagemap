@@ -143,7 +143,7 @@ function editImageMap() {
     log('Invoking editor for ' + editorData.fieldName, editorData);
     // Finally, show the dialog
     // @ts-ignore
-    $editor.modal({ backdrop: 'static' });
+    $editor.modal('show', { backdrop: 'static' });
 }
 
 
