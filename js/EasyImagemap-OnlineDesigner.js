@@ -90,7 +90,7 @@ function addOnlineDesignerButtons() {
             }
             return false;
         })
-        $('#design-' + fieldName + ' td.labelrc').append($btn);
+        $('#design-' + fieldName + ' td.labelrc').append($btn).children().wrapAll('<div style="position:relative;"></div>');
     }
 }
 
