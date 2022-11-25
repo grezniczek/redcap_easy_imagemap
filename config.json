@@ -16,7 +16,7 @@
         "redcap_survey_page",
         "redcap_every_page_top"
     ],
-    "auth-jsmo-ajax-actions": [
+    "auth-ajax-actions": [
         "get-fields",
         "edit-map",
         "save-map"
