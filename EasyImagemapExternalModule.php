@@ -208,6 +208,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         #region Editor Modal
         ?>
         <style>
+            .easy-imagemap-editor {
+                --stroke-width: 1
+            }
             .easy-imagemap-editor .modal-body {
                 padding: 0.5rem 1rem;
             }
@@ -259,12 +262,12 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             svg.eim-svg .anchor {
                 cursor: pointer;
                 stroke: black;
-                stroke-width: 1;
+                stroke-width: var(--stroke-width);
                 fill: yellow;
                 opacity: 0.7;
             }
             svg.eim-svg .anchor.active {
-                stroke-width: 2;
+                stroke-width: calc(var(--stroke-width) * 2);
                 fill: red;
             }
             svg.eim-svg polygon {
@@ -311,6 +314,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 outline-offset: 1px;
                 outline: 1px black dotted;
             }
+            .zoombutton-active {
+                outline: 1px blue dotted;
+                outline-offset: -3px;
+            }
         </style>
         <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
@@ -321,13 +328,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             Easy Imagemap Editor: <span class="field-name"></span>
                         </h4>
                     </div>
-                    <div class="modal-body draw empty-on-close" style="position:relative;">
+                    <div class="modal-body draw empty-on-close" style="position:relative;max-width:100%;max-height:50vh;overflow:scroll;">
                         <!-- Image -->
                     </div>
                     <div class="modal-body buttons">
                         <div>
                             <button data-action="add-area" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add new area</button>
                             <button data-action="preview" class="btn btn-info btn-sm"><i class="fas fa-eye"></i> Preview</button>
+                            |
+                            <button data-action="zoom1x" class="btn btn-light btn-sm zoombutton-active"><i class="fas fa-search"></i> 1x</button>
+                            <button data-action="zoom2x" class="btn btn-light btn-sm"><i class="fas fa-search"></i> 2x</button>
+                            <button data-action="zoom3x" class="btn btn-light btn-sm"><i class="fas fa-search"></i> 3x</button>
+                            <button data-action="zoom4x" class="btn btn-light btn-sm"><i class="fas fa-search"></i> 4x</button>
                             |
                             <div class="form-check form-check-inline">
                                 <label class="form-check-label" for="eim-two-way">Two way updates:</label>

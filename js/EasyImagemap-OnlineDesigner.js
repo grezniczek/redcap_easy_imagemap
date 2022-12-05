@@ -13,6 +13,7 @@ window.DE_RUB_EasyImagemap = EIM;
 var config = {};
 var $editor = $();
 var $svg = null;
+var $img = null;
 var svg = null;
 var $selectTemplate = $();
 var showingEditor = false;
@@ -22,6 +23,7 @@ var currentArea = null;
 var currentAnchor = null;
 var poly = null;
 var assignableLabels = {};
+let zoom = 1;
 
 
 function initialize(config_data, jsmo_obj) {
@@ -99,7 +101,7 @@ function editImageMap() {
     const $body = $editor.find('.modal-body.draw');
     const paddingLeft = $body.css('padding-left');
     const paddingTop = $body.css('padding-top');
-    const $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]')
+    $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]').clone();
     const w = $img.width();
     const h = $img.height();
     // Build the assignable box
@@ -112,9 +114,10 @@ function editImageMap() {
         }
     }
     // Build SVG to overlay on image
-    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="position:absolute;top:${paddingTop};left:${paddingLeft};" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="position:absolute;top:${paddingTop};left:${paddingLeft}; max-width: 100%; overflow:auto;" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
     // Add image and SVG
-    $body.append($img.clone()).append($svg);
+    $body.append($img).append($svg);
+    
     editorData.bounds = {
         width: w,
         height: h
@@ -144,6 +147,39 @@ function editImageMap() {
     // Finally, show the dialog
     // @ts-ignore
     $editor.modal('show', { backdrop: 'static' });
+}
+
+
+function applyZoom(setToZoom) {
+    ['zoom1x','zoom2x','zoom3x','zoom4x'].forEach((zoom) => {
+        const btn = document.querySelector('button[data-action="' + zoom + '"]');
+        if (btn) {
+            btn.classList.remove('zoombutton-active')
+            if (zoom == setToZoom) {
+                btn.classList.add('zoombutton-active')
+                zoomTo(Number.parseInt(zoom.substring(4,5)));
+            }
+            // @ts-ignore
+            btn.blur();
+        }
+    });
+}
+function zoomTo(f) {
+    log('Setting zoom level to: ' + f);
+    zoom = f;
+    const zW = editorData.bounds.width * f;
+    const zH = editorData.bounds.height * f;
+    $svg.css('width', zW + 'px').css('height', zH + 'px');
+    $img.css('width', zW + 'px').css('height', zH + 'px')
+    $img.css('max-width', zW + 'px').css('max-height', zH + 'px')
+    // @ts-ignore
+    document.querySelector('.easy-imagemap-editor').style.setProperty('--stroke-width', 1/f);
+    // Redraw anchors
+    const current = currentArea;
+    setCurrentArea(null);
+    if (current) {
+        setCurrentArea(current);
+    }
 }
 
 
@@ -287,10 +323,17 @@ function hideTooltip() {
     $tooltip.hide().html('');
 }
 
+
+/**
+ * 
+ * @param {PointerEvent} e 
+ */
 function handleSVGEvent(e) {
+    // Only handle left mouse button
+    if (e.button != 0 && editorData.mode != 'dragging') return;
     const pos = getMousePosition(e);
     const type = e.type ?? ''
-    const target = e.target
+    const target = e.target;
     if (editorData.mode == '' && type == 'pointerdown' && target.classList.contains('background')) {
         const id = target.getAttribute('data-id');
         setCurrentArea(id);
@@ -328,7 +371,7 @@ function handleSVGEvent(e) {
                 const newAnchor = createSVG('circle', {
                     cx: pos.x,
                     cy: pos.y,
-                    r: 4,
+                    r: 4 / zoom,
                     'class': 'anchor active',
                 });
                 svg.appendChild(newAnchor);
@@ -415,7 +458,7 @@ function setCurrentArea(id) {
                     const anchor = createSVG('circle', {
                         cx: x,
                         cy: y,
-                        r: 4,
+                        r: 4 / zoom,
                         'class': 'anchor',
                     });
                     svg.appendChild(anchor);
@@ -570,6 +613,12 @@ function executeEditorAction(action, $row) {
                 error(err);
             });
         }
+        break;
+        case 'zoom1x':
+        case 'zoom2x':
+        case 'zoom3x':
+        case 'zoom4x':
+            applyZoom(action);
         break;
     }
 }
