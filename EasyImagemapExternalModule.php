@@ -318,6 +318,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 outline: 1px blue dotted;
                 outline-offset: -3px;
             }
+            button[data-action="preview"].preview {
+                outline: 2px white solid;
+                outline-offset: -4px;
+            }
         </style>
         <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">

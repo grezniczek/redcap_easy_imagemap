@@ -516,8 +516,16 @@ function addTableRow(id) {
 
 function showPreview() {
     setCurrentArea(null);
-    setMode('preview');
-    $svg.addClass('preview');
+    if (editorData.mode == 'preview') {
+        setMode('');
+        $svg.removeClass('preview');
+        $('button[data-action="preview"]').removeClass('preview')
+    }
+    else {
+        setMode('preview');
+        $svg.addClass('preview');
+        $('button[data-action="preview"]').addClass('preview')
+    }
 }
 
 function executeEditorAction(action, $row) {
