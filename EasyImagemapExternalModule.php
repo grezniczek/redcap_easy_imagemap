@@ -305,6 +305,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 border: 1px solid black;
                 border-radius: 2px;
                 padding: 3px;
+                z-index: 999999;
             }
             div.eim-style-button {
                 margin-bottom: -8px;
@@ -325,7 +326,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         </style>
         <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
-            <div class="modal-dialog modal-xl modal-dialog-centered" role="document">
+            <div class="modal-dialog modal-fullscreen modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h4 id="easy-imagemap-editor-title">

@@ -114,7 +114,7 @@ function editImageMap() {
         }
     }
     // Build SVG to overlay on image
-    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="position:absolute;top:${paddingTop};left:${paddingLeft}; max-width: 100%; overflow:auto;" height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="position:absolute;top:${paddingTop};left:${paddingLeft}; height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
     // Add image and SVG
     $body.append($img).append($svg);
     
@@ -334,6 +334,7 @@ function handleSVGEvent(e) {
     const pos = getMousePosition(e);
     const type = e.type ?? ''
     const target = e.target;
+    if (target == null) return;
     if (editorData.mode == '' && type == 'pointerdown' && target.classList.contains('background')) {
         const id = target.getAttribute('data-id');
         setCurrentArea(id);
@@ -669,14 +670,10 @@ function generateUUID() {
  * @param {boolean} isError
  */
 function showToast(msg, isError = false) {
-    const selector = isError ? '.easy-imagemap-editor.error-toast' : '.easy-imagemap-editor.success-toast';
-    var $toast = $(selector);
-    $toast.find('[data-content=toast]').html(msg);
+    const toastId = window.showToast("Easy Imagemap", msg, 'success', 1000);
     if (isError) {
-        error($toast.find('[data-content=toast]').text());
+        error($('#' + toastId).text());
     }
-    // @ts-ignore
-    $toast.toast('show')
 }
 
 //#endregion
