@@ -16,7 +16,10 @@
             "name": "Attach to Chrome",
             "port": 9222,
             "webRoot": "${workspaceFolder}",
-            "sourceMaps": false
+            "sourceMaps": false,
+            "pathMapping": {
+                "/dev-modules/": "/home/gr/redcap/dev-modules/"
+            }
         }
     ],
     "compounds": [

@@ -50,8 +50,6 @@ function initialize(config_data) {
             error('Failed to setup map for field \'' + mapField + '\'.', ex);
         }
     }
-    // Add interactions with form elements
-    addInteractivity();
     // Hook into form locking logic
     if (typeof window['saveLocking'] != 'undefined') {
         EIM_saveLocking = window['saveLocking'];
@@ -59,7 +57,9 @@ function initialize(config_data) {
             EIM_saveLocking(lock_action, esign_action);
             if (lock_action = '0') {
                 setTimeout(function() {
-                    addInteractivity();
+                    for (const mapField in config.maps) {
+                        addInteractivity(mapField);
+                    }
                 }, 100);
             }
         };
@@ -92,50 +92,61 @@ function addMap(field, map, retry) {
     }
     log('Setting up field \'' + field + '\' (after ' + (retryCount - retry) + ' retries):', map);
 
-    // Build SVG to overlay on image - we need to wrap the image first
-    const $wrapper = $img.wrap('<div style="position:relative;"></div>').css('max-width','100%').css('height','auto').parent();
-    const $svg = $('<svg data-field="' + field + '" tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;position:absolute;top:0;left:0" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
-    $wrapper.append($svg);
-    const svg = $svg[0];
-    // Add the areas and styles
-    const styles = [];
-    for (const areaIdx in map.areas) {
-        const id = 'eim-'+generateUUID();
-        const area = map.areas[areaIdx];
-        area.id = id;
-        const type = config.targets[area.target];
-        const poly = createSVG('polygon', { 
-            points: area.points,
-            id: id,
-            'data-target': area.target,
-            'data-code': area.code,
+    function addMapDo() {
+        // Build SVG to overlay on image - we need to wrap the image first
+        const $wrapper = $img.wrap('<div style="position:relative;"></div>').css('max-width','100%').css('height','auto').parent();
+        // Defer until image is displayed
+        
+        // Adjust for image postion - get its top / left
+        const wrapperTop = $wrapper.offset()?.top ?? 0;
+        const imgTop = $img.offset()?.top ?? 0;
+        const wrapperLeft = $wrapper.offset()?.left ?? 0;
+        const imgLeft = $img.offset()?.left ?? 0;
+        const svgTop = imgTop - wrapperTop;
+        const svgLeft = imgLeft - wrapperLeft;
+        const $svg = $('<svg data-field="' + field + '" tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;position:absolute;top:' + svgTop + ';left:'+ svgLeft + '" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
+        $wrapper.append($svg);
+        const svg = $svg[0];
+        // Add the areas and styles
+        const styles = [];
+        for (const areaIdx in map.areas) {
+            const id = 'eim-'+generateUUID();
+            const area = map.areas[areaIdx];
+            area.id = id;
+            const type = config.targets[area.target];
+            const poly = createSVG('polygon', { 
+                points: area.points,
+                id: id,
+                'data-target': area.target,
+                'data-code': area.code,
+            });
+    
+            styles.push(
+                '#' + id + ' {stroke-widht:1;stroke:orange;fill:orange;opacity:0.01;cursor:pointer;}\n' + 
+                '#' + id + ':hover {opacity:0.1;}\n' + 
+                '#' + id + '.selected {opacity:0.4;}\n'
+            );
+            svg.append(poly);
+            if (checkTargetValue(type, area.target, area.code)) {
+                poly.classList.add('selected');
+            }
+        }
+        $('body').append('<style>' + styles.join('') + '</style>')
+        // Show the SVG overlay once the image has completed loading (otherwise, the imagemap might show first)
+        // Hide the SVG to prevent the overlay from showing while the image is already gone 
+        $(window).on('beforeunload', function() {
+            $svg.hide();
         });
-
-        styles.push(
-            '#' + id + ' {stroke-widht:1;stroke:orange;fill:orange;opacity:0.01;cursor:pointer;}\n' + 
-            '#' + id + ':hover {opacity:0.1;}\n' + 
-            '#' + id + '.selected {opacity:0.4;}\n'
-        );
-        svg.append(poly);
-        if (checkTargetValue(type, area.target, area.code)) {
-            poly.classList.add('selected');
-        }
-    }
-    $('body').append('<style>' + styles.join('') + '</style>')
-    // Show the SVG overlay once the image has completed loading (otherwise, the imagemap might show first)
-    $img.one('load', function() {
+        addInteractivity(field);
         $svg.show();
-    }).each(function() {
-        // In case the image was already completed, we need to trigger the load event
-        // @ts-ignore
-        if (this.complete) {
-            $img.trigger('load');
-        }
-    });
-    // Hide the SVG to prevent the overlay from showing while the image is already gone 
-    $(window).on('beforeunload', function() {
-        $svg.hide();
-    });
+    }
+    if ($img.prop('complete') && $img.prop('naturalWidth') > 0) {
+        addMapDo();
+    } else {
+        $img.one('load', function() {
+            addMapDo();
+        });
+    }
 }
 
 /**
@@ -180,22 +191,20 @@ function createSVG(tag, attrs) {
 /**
  * Adds interactive features, i.e. binding to checkboxes, radio buttons, dropdowns
  */
-function addInteractivity() {
-    for (const field in config.maps) {
-        try {
-            const map = config.maps[field];
-            for (const areaIdx in map.areas) {
-                const area = map.areas[areaIdx];
-                const id = area.id;
-                const type = config.targets[area.target];
-                if (!checkTargetDisabled(type, area.target, area.code)) {
-                    setupInteractivity(field, id, type, area.target, area.code, map['two-way']);
-                }
+function addInteractivity(field) {
+    try {
+        const map = config.maps[field];
+        for (const areaIdx in map.areas) {
+            const area = map.areas[areaIdx];
+            const id = area.id;
+            const type = config.targets[area.target];
+            if (!checkTargetDisabled(type, area.target, area.code)) {
+                setupInteractivity(field, id, type, area.target, area.code, map['two-way']);
             }
         }
-        catch(ex) {
-            error('Failed to add interactive features for map field \'' + field + '\'.', ex);
-        }
+    }
+    catch(ex) {
+        error('Failed to add interactive features for map field \'' + field + '\'.', ex);
     }
 }
 
