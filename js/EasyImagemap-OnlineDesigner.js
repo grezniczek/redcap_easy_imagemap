@@ -597,6 +597,7 @@ function executeEditorAction(action, $row) {
         break;
         case 'cancel': {
             // Reset
+            applyZoom('zoom1x');
             editorData = null;
             $editor.find('.empty-on-close').children().remove();
             $editor.find('.remove-on-close').remove();
