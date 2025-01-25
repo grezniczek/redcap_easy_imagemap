@@ -92,7 +92,7 @@ svg.eim-svg polygon.background.active {
 }
 svg.eim-svg.preview {
     cursor: default;
-    outline: 2px var(--bs-info) solid;
+    outline: 2px var(--bs-primary) solid;
 }
 svg.eim-svg.preview polygon.background {
     opacity: 0;
@@ -111,13 +111,11 @@ svg.eim-svg.preview polygon.background:not(.selected):hover {
     padding: 2px 5px;
     z-index: 999999;
 }
-div.eim-style-button {
-    margin-bottom: -8px;
+.eim-style-button {
     display: inline-block;
-    width: 40px;
-    height: 22px;
-    outline-offset: 1px;
-    outline: 1px black dotted;
+    width: 12px;
+    height: 12px;
+    margin-right: 3px;
 }
 .modal-body.draw {
     position: relative;

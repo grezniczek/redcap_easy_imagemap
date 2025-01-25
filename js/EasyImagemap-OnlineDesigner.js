@@ -539,12 +539,12 @@ function showPreview() {
     if (editorData.mode == 'preview') {
         setMode('');
         $svg.removeClass('preview');
-        $('button[data-action="preview"]').addClass('btn-light').removeClass('btn-info');
+        $('button[data-action="preview"]').addClass('btn-outline-primary').removeClass('btn-primary');
     }
     else {
         setMode('preview');
         $svg.addClass('preview');
-        $('button[data-action="preview"]').removeClass('btn-light').addClass('btn-info');
+        $('button[data-action="preview"]').removeClass('btn-outline-primary').addClass('btn-primary');
     }
 }
 
