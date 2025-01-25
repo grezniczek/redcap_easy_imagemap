@@ -98,9 +98,7 @@ function addOnlineDesignerButtons() {
 
 function editImageMap() {
     $editor.find('.field-name').text(editorData.fieldName);
-    const $body = $editor.find('.modal-body.draw');
-    const paddingLeft = $body.css('padding-left');
-    const paddingTop = $body.css('padding-top');
+    const $container = $editor.find('#eim-container');
     $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]').clone();
     const w = $img.width();
     const h = $img.height();
@@ -114,9 +112,9 @@ function editImageMap() {
         }
     }
     // Build SVG to overlay on image
-    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="position:absolute;top:${paddingTop};left:${paddingLeft}; height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
     // Add image and SVG
-    $body.append($img).append($svg);
+    $container.append($img).append($svg);
     
     editorData.bounds = {
         width: w,
@@ -337,63 +335,80 @@ function handleSVGEvent(e) {
     const type = e.type ?? ''
     const target = e.target;
     if (target == null) return;
+
+    // Select an area
     if (editorData.mode == '' && type == 'pointerdown' && target.classList.contains('background')) {
         const id = target.getAttribute('data-id');
         setCurrentArea(id);
+        return;
     }
-    else if (currentArea) {
-        if (editorData.mode == 'dragging' && type == 'pointermove') {
-            // Update coordinates of anchor
-            currentAnchor.setAttributeNS(null, 'cx', pos.x);
-            currentAnchor.setAttributeNS(null, 'cy', pos.y);
-            updatePolygon();
-        }
-        else if (editorData.mode == 'dragging' && type == 'pointerup') {
-            if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
-                // Outside - delete anchor
-                removeAnchor(currentAnchor);
-            }
-            else {
-                // Inside - make this anchor the 'active' one
-                activateAnchor(currentAnchor);
-            }
-            setMode('');
-            svg.releasePointerCapture(e.pointerId);
-            updatePolygon();
-        }
-        else if (editorData.mode == '' && type == 'pointerdown') {
-            // Check if over anchor
-            if (target.classList.contains('anchor')) {
-                // Set this anchor as the active one
-                currentAnchor = target;
-                activateAnchor(currentAnchor);
-                setMode('dragging');
-            }
-            else {
-                // Create a new anchor
-                const newAnchor = createSVG('circle', {
-                    cx: pos.x,
-                    cy: pos.y,
-                    r: 4 / zoom,
-                    'class': 'anchor active',
-                });
-                svg.appendChild(newAnchor);
-                setMode('dragging');
-                currentAnchor = newAnchor;
-                editorData.anchors.push(currentAnchor);
-                activateAnchor(currentAnchor);
-                updatePolygon();
-            }
-            svg.setPointerCapture(e.pointerId);
-        }
-    }
-    else if (editorData.mode == 'preview' && type == 'pointerdown' && target.classList.contains('background')) {
+
+    // Toggle an area while in preview mode
+    if (editorData.mode == 'preview' && type == 'pointerdown' && target.classList.contains('background')) {
         if (target.classList.contains('selected')) {
             target.classList.remove('selected');
         }
         else {
             target.classList.add('selected');
         }
+        return;
+    }
+    
+    // Exit if there is no current area
+    if (!currentArea) return;
+
+    // Start an dragging or moving process
+    if (editorData.mode == '' && type == 'pointerdown') {
+        // Check if over existing anchor
+        if (target.classList.contains('anchor')) {
+            // Set this anchor as the active one
+            currentAnchor = target;
+            activateAnchor(currentAnchor);
+            // Start dragging an anchor
+            setMode('dragging');
+        }
+        else {
+            // Create a new anchor
+            const newAnchor = createSVG('circle', {
+                cx: pos.x,
+                cy: pos.y,
+                r: 4 / zoom,
+                'class': 'anchor active',
+            });
+            svg.appendChild(newAnchor);
+            setMode('dragging');
+            currentAnchor = newAnchor;
+            editorData.anchors.push(currentAnchor);
+            activateAnchor(currentAnchor);
+            updatePolygon();
+        }
+        svg.setPointerCapture(e.pointerId);
+        return;
+    }
+
+    // Drag an anchor
+    if (editorData.mode == 'dragging' && type == 'pointermove') {
+        // Update coordinates of anchor
+        currentAnchor.setAttributeNS(null, 'cx', pos.x);
+        currentAnchor.setAttributeNS(null, 'cy', pos.y);
+        updatePolygon();
+        return;
+    }
+
+    // End dragging of an anchor
+    if (editorData.mode == 'dragging' && type == 'pointerup') {
+        if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
+            // Outside - delete anchor
+            removeAnchor(currentAnchor);
+        }
+        else {
+            // Inside - make this anchor the 'active' one
+            activateAnchor(currentAnchor);
+        }
+        setMode('');
+        svg.releasePointerCapture(e.pointerId);
+        updatePolygon();
+        return;
     }
 }
 
@@ -594,6 +609,7 @@ function executeEditorAction(action, $row) {
         }
         break;
         case 'preview': {
+            applyZoom('zoom1x');
             showPreview();
         }
         break;

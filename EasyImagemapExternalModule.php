@@ -247,9 +247,12 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 font-size: 13px;
             }
             svg.eim-svg {
+                position: absolute;
+                left: 0;
+                top: 0;
                 cursor: crosshair;
-                outline: 2px red dotted;
-                outline-offset: 1px;
+                outline: 1px red dotted;
+                outline-offset: -1px;
             }
             svg.eim-svg.inactive {
                 cursor: not-allowed;
@@ -257,7 +260,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             }
             svg.eim-svg.preview {
                 cursor: not-allowed;
-                outline: 2px var(--info) solid;
+                outline: 1px var(--info) solid;
             }
             svg.eim-svg .anchor {
                 cursor: pointer;
@@ -323,6 +326,25 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 outline: 2px white solid;
                 outline-offset: -4px;
             }
+            .modal-body.draw {
+                position: relative;
+                max-height: 55%;
+                max-width: 100%;
+                overflow: auto;
+                padding: 5px 15px;
+
+            }
+            #eim-container {
+                position: relative;
+                min-height: fit-content;
+                padding: 0;
+            }
+            .modal-body.buttons {
+                min-height: 114px;
+            }
+            .modal-body.assign {
+                max-height: 40%;
+            }
         </style>
         <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
@@ -333,8 +355,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             Easy Imagemap Editor: <span class="field-name"></span>
                         </h4>
                     </div>
-                    <div class="modal-body draw empty-on-close" style="position:relative;max-width:100%;max-height:50vh;overflow:scroll;">
-                        <!-- Image -->
+                    <div class="modal-body draw">
+                        <div id="eim-container" class="empty-on-close"></div>
                     </div>
                     <div class="modal-body buttons">
                         <div>
