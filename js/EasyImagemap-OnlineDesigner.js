@@ -144,6 +144,8 @@ function editImageMap() {
     $editor.find('input[name=two-way]').prop('checked', editorData['two-way']);
     // Some logging
     log('Invoking editor for ' + editorData.fieldName, editorData);
+    // Hide REDCap's move to top button
+    $('.to-top-button').hide();
     // Finally, show the dialog
     // @ts-ignore
     $editor.modal('show', { backdrop: 'static' });
@@ -604,6 +606,7 @@ function executeEditorAction(action, $row) {
             // Close editor
             // @ts-ignore
             $editor.modal('hide');
+            $('.to-top-button').show();
         }
         break;
         case 'apply': {
