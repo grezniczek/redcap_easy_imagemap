@@ -8,47 +8,44 @@ use UserRights;
 use Vanderbilt\REDCap\Classes\ProjectDesigner;
 
 require_once "classes/ActionTagHelper.php";
+require_once "classes/InjectionHelper.php";
 
 class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 {
     private $js_debug = false;
-    static $PROJECT_CACHE = array();
+
+    /** @var \Project */
+    private $proj = null;
+    private $project_id = null;
+
     const ACTIONTAG = "@EASYIMAGEMAP";
-
-    function __construct()
-    {
-        parent::__construct();
-
-        // Load settings
-        if ($this->getProjectId() !== null) {
-            $this->js_debug = $this->getProjectSetting("javascript-debug") == true;
-        }
-    }
 
     #region Hooks
 
     function redcap_data_entry_form($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $repeat_instance = 1) {
-        $map_fields = $this->easy_GetQualifyingFields($project_id, $instrument);
+        $this->init_proj($project_id);
+        $this->init_config();
+        $map_fields = $this->get_qualifying_fields($instrument);
         if (count($map_fields)) {
-            $Proj = $this->easy_GetProject($project_id);
-            $page_fields = array_keys($Proj->forms[$instrument]["fields"]);
-            $this->easy_DisplayImagemaps($project_id, $map_fields, $page_fields, false);
+            $this->display_imagemaps($map_fields, $instrument, false);
         }
     }
 
     function redcap_survey_page($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $survey_hash, $response_id = NULL, $repeat_instance = 1) {
-        $Proj = $this->easy_GetProject($project_id);
+        $this->init_proj($project_id);
+        $this->init_config();
         // We need to find the fields that are displayed on this particular survey page
-        $survey_id = $Proj->forms[$instrument]["survey_id"];
-        $multi_page = $Proj->surveys[$survey_id]["question_by_section"] == "1";
+        $forms = $this->get_project_forms();
+        $survey_id = $forms[$instrument]["survey_id"];
+        $multi_page = $this->proj->surveys[$survey_id]["question_by_section"] == "1";
         $page = $multi_page ? intval($_GET["__page__"]) : 1;
         list ($page_fields, $_) = Survey::getPageFields($instrument, $multi_page);
         $page_fields = $page_fields[$page];
-        $map_fields = $this->easy_GetQualifyingFields($project_id, $instrument);
+        $map_fields = $this->get_qualifying_fields($instrument);
         // Only consider the map fields that are actually on the survey page
         $map_fields = array_intersect_key($map_fields, array_flip($page_fields));
         if (count($map_fields)) {
-            $this->easy_DisplayImagemaps($project_id, $map_fields, $page_fields, true);
+            $this->display_imagemaps($map_fields, $page_fields, true);
         }
     }
 
@@ -57,33 +54,33 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         if ($project_id == null) return; 
         // Act based on the page that is being displayed
         $page = defined("PAGE") ? PAGE : "";
-        // Is there a user?
+        $form = $_GET["page"] ?? "";
+        // Return if not on Online Designer / form edit mode
+        if ($page != "Design/online_designer.php" || $form == "") return;
+        // Also, ensure there is a user with desgin rights
         $user_name = $_SESSION["username"] ?? false;
         $privileges = $user_name ? UserRights::getPrivileges($project_id, $user_name)[$project_id][$user_name] : false;
-        // Does the user have design rights?
         $design_rights = $privileges && $privileges["design"] == "1";
-        // Online Designer
-        if (strpos($page, "Design/online_designer.php") === 0 && $design_rights) {
-            $form = $_GET["page"] ?? "";
-            if ($form) {
-                $Proj = self::easy_GetProject($project_id);
-                if (isset($Proj->forms[$form])) {
-                    $this->easy_OnlineDesigner($project_id, $form);
-                }
-            }
-        }
+        if (!$design_rights) return;
+
+        // Initialize
+        $this->init_proj($project_id);
+        $this->init_config();
+        // Setup the Online Designer integration
+        $this->setup_online_designer($form);
     }
 
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id) {
+        $this->init_proj($project_id);
         switch($action) {
             case "get-fields":
-                return $this->easy_GetQualifyingFields($project_id, $payload);
+                return $this->get_qualifying_fields($payload);
 
             case "edit-map":
-                return $this->easy_GetFieldInfo($project_id, $payload);
+                return $this->get_field_info($payload);
 
             case "save-map":
-                return $this->easy_SaveData($project_id, $payload);
+                return $this->save_eim_data($payload);
 
             default:
                 return null;
@@ -96,19 +93,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     /**
      * Injects the code necessary for rendering imagemaps on data entry or survey pages.
-     * @param string $project_id 
      * @param string[] $map_fields 
-     * @param string[] $page_fields 
+     * @param string $form
      * @param boolean $inline_js 
      */
-    private function easy_DisplayImagemaps($project_id, $map_fields, $page_fields, $inline_js) {
+    private function display_imagemaps($map_fields, $form, $inline_js) {
+        $this->require_proj();
         $config = array(
             "version" => $this->VERSION,
             "debug" => $this->js_debug,
         );
-        
-        $Proj = $this->easy_GetProject($project_id);
-        
+        $page_fields = $this->get_form_fields($form);
         // Process all map fields and assemble metadata needed for map rendering
         $warnings = [];
         $errors = [];
@@ -116,11 +111,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $areas = [];
         $targets = [];
         foreach ($map_fields as $map_field_name => $edoc_hash) {
-            $mf_meta = $this->easy_GetFieldInfo($project_id, $map_field_name);
+            $mf_meta = $this->get_field_metadata($map_field_name);
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
                 list($target_field, $code) = explode("::", $map["target"], 2);
-                $target_field_info = $Proj->metadata[$target_field];
+                $target_field_info = $this->get_field_metadata($target_field);
                 $target_type = $target_field_info["element_type"];
                 $target_enum = parseEnum($target_field_info["element_enum"]);
                 // Does the field exist?
@@ -159,18 +154,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $config["errors"] = array_unique($errors);
         }
 
-        #region Script
-        $js_file = "js/EasyImagemap-Display.js";
-        if ($inline_js) {
-            $js = file_get_contents($this->getModulePath().$js_file);
-            $src = "";
-        }
-        else {
-            $js = "";
-            $src = " src=\"{$this->getUrl($js_file)}\"";
-        }
+        $ih = InjectionHelper::init($this);
+        $ih->js("js/EasyImagemap-Display.js", $inline_js);
         ?>
-        <script<?= $src ?>><?= $js ?></script>
         <script>
             $(function() {
                 DE_RUB_EasyImagemap.init(<?=json_encode($config)?>);
@@ -184,13 +170,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #region Online Designer Integration
 
-    private function easy_OnlineDesigner($project_id, $form) {
-
+    private function setup_online_designer($form) {
+        $this->require_proj();
+        $fields = $this->get_qualifying_fields($form);
+        $ih = InjectionHelper::init($this);
+        $ih->css("css/EasyImagemap-OnlineDesigner.css");
+        $ih->js("js/EasyImagemap-OnlineDesigner.js");
         $config = [
             "debug" => $this->js_debug,
             "mode" => "OnlineDesigner",
             "version" => $this->VERSION,
-            "fields" => $this->easy_GetQualifyingFields($project_id, $form),
+            "fields" => $fields,
             "form" => $form,
         ];
         $this->initializeJavascriptModuleObject();
@@ -198,7 +188,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
         #region Scripts and HTML
         ?>
-        <script src="<?php print $this->getUrl('js/EasyImagemap-OnlineDesigner.js'); ?>"></script>
         <script>
             $(function() {
                 DE_RUB_EasyImagemap.init(<?=json_encode($config)?>, <?=$jsmo_name?>);
@@ -207,148 +196,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         <?php
         #region Editor Modal
         ?>
-        <style>
-            .easy-imagemap-editor {
-                --stroke-width: 1
-            }
-            .easy-imagemap-editor .modal-header {
-                padding: 0.5rem 1rem;
-                font-size: 20px;
-                display: block;
-            }
-            .easy-imagemap-editor .modal-header .eim-icon {
-                font-size: 16px;
-            }
-            .eim-icon {
-                color: orange;
-            }
-            .easy-imagemap-editor .modal-body {
-                padding: 0.5rem 1rem;
-            }
-            .easy-imagemap-editor p {
-                margin-top: 0;
-            }
-            .easy-imagemap-editor .area-style-sample {
-                display: inline-block;
-                width: 4rem;
-                height: 1.9rem;
-                background-color: aqua;
-                position: absolute;
-                margin-left: 10px;
-            }
-            .easy-imagemap-editor .field-name {
-                font-weight: bold;
-            }
-            tr.area td {
-                padding: 0.2rem !important;
-            }
-            tr.area .form-check {
-                margin-top: 8px;
-            }
-            .assignables .badge {
-                font-weight: normal !important;
-            }
-            .assignables .badge i {
-                font-size: 70% !important;
-            }
-            .bootstrap-select .dropdown-menu li a {
-                font-size: 13px;
-            }
-            .bootstrap-select .dropdown-menu li a:hover {
-                font-size: 13px;
-            }
-            svg.eim-svg {
-                position: absolute;
-                left: 0;
-                top: 0;
-                cursor: crosshair;
-                outline: 1px red dotted;
-                outline-offset: -1px;
-            }
-            svg.eim-svg.inactive {
-                cursor: not-allowed;
-                outline-color: gray;
-            }
-            svg.eim-svg.preview {
-                cursor: not-allowed;
-                outline: 1px var(--info) solid;
-            }
-            svg.eim-svg .anchor {
-                cursor: pointer;
-                stroke: black;
-                stroke-width: var(--stroke-width);
-                fill: yellow;
-                opacity: 0.7;
-            }
-            svg.eim-svg .anchor.active {
-                stroke-width: calc(var(--stroke-width) * 2);
-                fill: red;
-            }
-            svg.eim-svg polygon {
-                stroke-width: 1;
-                stroke: orange;
-                fill: orange;
-                opacity: 0.3;
-            }
-            svg.eim-svg polygon.background {
-                cursor: pointer;
-                stroke-width: 1;
-                stroke: blueviolet;
-                fill: blueviolet;
-                opacity: 0.2;
-            }
-            svg.eim-svg polygon.background.active {
-                display: none;
-            }
-            svg.eim-svg.preview {
-                cursor: default;
-                outline: 2px var(--bs-info) solid;
-            }
-            svg.eim-svg.preview polygon.background {
-                opacity: 0;
-                cursor: pointer;
-            }
-            svg.eim-svg.preview polygon.background.selected {
-                opacity: 0.6;
-            }
-            svg.eim-svg.preview polygon.background:not(.selected):hover {
-                opacity: 0.1;
-            }
-            #easy-imagemap-editor-tooltip {
-                background: cornsilk;
-                border: 1px solid black;
-                border-radius: 2px;
-                padding: 3px;
-                z-index: 999999;
-            }
-            div.eim-style-button {
-                margin-bottom: -8px;
-                display: inline-block;
-                width: 40px;
-                height: 22px;
-                outline-offset: 1px;
-                outline: 1px black dotted;
-            }
-            .modal-body.draw {
-                position: relative;
-                max-height: 55%;
-                max-width: 100%;
-                overflow: auto;
-                padding: 5px 15px;
-
-            }
-            #eim-container {
-                position: relative;
-                min-height: fit-content;
-                padding: 0;
-            }
-            .modal-body.buttons {
-                min-height: 114px;
-            }
-            .modal-body.assign {
-                max-height: 40%;
-            }
-        </style>
         <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
         <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
             <div class="modal-dialog modal-fullscreen modal-dialog-centered" role="document">
@@ -382,7 +229,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <input class="form-check-input ml-2" type="checkbox" id="eim-two-way" name="two-way" style="margin-top:0.2rem;" value="">
                             </div>
                             <div class="form-check form-check-inline ml-3">
-                                <i class="fas fa-palette"></i>&nbsp;Style:
+                                <i class="fa-solid fa-palette"></i>&nbsp;Style:
                             </div>
                         </div>
                         <div class="mt-1">
@@ -450,51 +297,16 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         </p>
                     </div>
                     <div class="modal-footer">
-                        <button data-action="clear-areas" class="btn btn-link btn-xs text-danger" style="margin-right:auto;"><i class="far fa-trash-alt"></i> Reset (remove all areas)</button>
+                        <button data-action="clear-areas" class="btn btn-link btn-xs text-danger" style="margin-right:auto;"><i class="fa-regular fa-trash-alt"></i> Reset (remove all areas)</button>
                         <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?=RCView::tt("global_53") // Cancel ?></button>
-                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fas fa-save"></i> &nbsp; <?=RCView::tt("report_builder_28") // Save Changes ?></button>
+                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fa-solid fa-save"></i> &nbsp; <?=RCView::tt("report_builder_28") // Save Changes ?></button>
                     </div>
                 </div>
             </div>
         </div>
         <?php
         #endregion
-        #region Toasts (HTML)
-        ?>
-        <!-- Success toast -->
-        <div class="position-fixed bottom-0 right-0 p-3" style="z-index: 99999; right: 0; bottom: 0;">
-            <div class="easy-imagemap-editor success-toast toast hide" role="alert" aria-live="assertive" aria-atomic="true" data-delay="2000" data-animation="true" data-autohide="true">
-                <div class="toast-header">
-                    <svg class="bd-placeholder-img rounded mr-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice" focusable="false">
-                        <rect width="100%" height="100%" fill="#28a745"></rect>
-                    </svg>
-                    <strong class="mr-auto"><?=RCView::tt("multilang_100") // Success ?></strong>
-                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?=RCView::tt_attr("calendar_popup_01") // Close ?>">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="toast-body" data-content="toast"></div>
-            </div>
-        </div>
-        <!-- Error toast -->
-        <div class="position-fixed bottom-0 right-0 p-3" style="z-index: 99999; right: 0; bottom: 0;">
-            <div class="easy-imagemap-editor error-toast toast hide" role="alert" aria-live="assertive" aria-atomic="true" data-delay="2000" data-animation="true" data-autohide="false">
-                <div class="toast-header">
-                    <svg class="bd-placeholder-img rounded mr-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" preserveAspectRatio="xMidYMid slice" focusable="false">
-                        <rect width="100%" height="100%" fill="#dc3545"></rect>
-                    </svg>
-                    <strong class="mr-auto"><?=RCView::tt("global_01") // ERROR ?></strong>
-                    <button type="button" class="ml-2 mb-1 close" data-dismiss="toast" aria-label="<?=RCView::tt_attr("calendar_popup_01") // Close ?>">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="toast-body" data-content="toast"></div>
-            </div>
-        </div>
-<?php
-        #endregion
 
-        #endregion
     }
 
     #endregion
@@ -503,22 +315,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     /**
      * Gets field and other metadata needed for the Online Designer integration
-     * @param string $project_id 
      * @param string $field_name 
      * @return array 
      */
-    private function easy_GetFieldInfo($project_id, $field_name) {
-        $Proj = self::easy_GetProject($project_id);
-        // Does the field exist?
-        if (!isset($Proj->metadata[$field_name])) {
-            throw new Exception("Field '$field_name' does not exist!");
-        }
-        $field = $Proj->metadata[$field_name];
+    private function get_field_info($field_name) {
+        $this->require_proj();
+        $tagname = self::ACTIONTAG;
+        $field = $this->get_field_metadata($field_name);
         $form_name = $field["form_name"];
-        $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
+        $qualified_fields = $this->get_qualifying_fields($form_name);
         // Does it have the action tag?
         if (!array_key_exists($field_name, $qualified_fields)) {
-            throw new Exception("Field '$field_name' is not marked with " . self::ACTIONTAG . "!");
+            throw new Exception("Field '$field_name' is not marked with $tagname!");
         }
         // Extract action tag parameter. The parameter is a JSON string that must be wrapped in single quotes!
         $tag = array_pop(ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG));
@@ -528,14 +336,15 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $params = json_decode($params, true, 512, JSON_THROW_ON_ERROR);
         }
         catch(\Throwable $_) {
-            throw new Exception("Failed to parse action tag parameter (invalid JSON). Fix or remove/reset it manually!");
+            throw new Exception("Failed to parse $tagname parameter for field '$field_name' (invalid JSON). Fix or remove/reset it manually!");
         }
         $assignables = array();
-        foreach ($Proj->forms[$form_name]["fields"] as $this_field_name => $_) {
+        $form_fields = $this->get_form_fields($form_name);
+        foreach ($form_fields as $this_field_name) {
             if ($this_field_name == "{$form_name}_complete") continue; // Skip form status field
-            $this_field = $Proj->metadata[$this_field_name];
+            $this_field = $this->get_field_metadata($this_field_name);
             $this_type = $this_field["element_type"];
-            $this_icon = $this_type == "checkbox" ? "<i class=\"far fa-check-square\"></i>" : "<i class=\"fas fa-dot-circle\"></i>";
+            $this_icon = $this_type == "checkbox" ? "<i class=\"fa-regular fa-check-square\"></i>" : "<i class=\"fa-solid fa-dot-circle\"></i>";
             if (in_array($this_type, ["checkbox", "radio", "select", "yesno", "truefalse"])) {
                 $enum = parseEnum($this_field["element_enum"]);
                 if (count($enum)) {
@@ -587,18 +396,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
      * @param string $form 
      * @return array 
      */
-    private function easy_GetQualifyingFields($project_id, $form) {
+    private function get_qualifying_fields($form) {
+        $this->require_proj();
         $fields = [];
-        $Proj = self::easy_GetProject($project_id);
-        foreach ($Proj->forms[$form]["fields"] as $field_name => $_) {
-            $field_meta = $Proj->metadata[$field_name];
+        $forms = $this->get_project_forms();
+        if (!isset($forms[$form])) {
+            throw new Exception("Form '$form' does not exist!");
+        }
+        foreach ($forms[$form]["fields"] as $field_name => $_) {
+            $field_meta = $this->get_field_metadata($field_name);
             if (
                 $field_meta["element_type"] == "descriptive" &&
                 $field_meta["edoc_id"] &&
                 $field_meta["edoc_display_img"] == "1" &&
                 strpos($field_meta["misc"], self::ACTIONTAG) !== false
             ) {
-                $fields[$field_name] = Files::docIdHash($field_meta["edoc_id"], $Proj->getProjectSalt($project_id));
+                $fields[$field_name] = Files::docIdHash($field_meta["edoc_id"], $this->get_salt());
             }
         }
         return $fields;
@@ -606,21 +419,20 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     /**
      * Saves designer data in a field's Action Tag / Field Annotation ('misc')
-     * @param string $project_id 
      * @param Array $data 
      * @return true 
      * @throws Exception Throws in case of failure
      */
-    private function easy_SaveData($project_id, $data) {
-        $Proj = self::easy_GetProject($project_id);
+    private function save_eim_data($data) {
+        $this->require_proj();
         $field_name = $data["fieldName"];
         $form_name = $data["formName"];
         $map = $data["map"];
-        $qualified_fields = $this->easy_GetQualifyingFields($project_id, $form_name);
+        $qualified_fields = $this->get_qualifying_fields($form_name);
         if (!array_key_exists($field_name, $qualified_fields)) {
             throw new Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
         }
-        $field_data = $Proj->metadata[$field_name];
+        $field_data = $this->get_field_metadata($field_name);
         $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
         $search = $at["match"];
         $map["_w"] = $data["bounds"]["width"];
@@ -629,28 +441,78 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"]."=".$json;
         $misc = checkNull(trim(str_replace($search, $replace, $field_data["misc"])));
-        $status = intval($Proj->project['status'] ?: 0);
-        $metadata_table = ($status > 0) ? ProjectDesigner::METADATA_TEMP_TABLE : ProjectDesigner::METADATA_TABLE;
+        $metadata_table = $this->get_project_metadata_table();
         $field_name = db_escape($field_name);
         // Update field
-        $sql = "UPDATE `$metadata_table` SET `misc` = $misc WHERE `project_id` = $project_id AND `field_name` = '$field_name'";
-        $q = db_query($sql);
+        $sql = "UPDATE `$metadata_table` SET `misc` = ? WHERE `project_id` = ? AND `field_name` = ?";
+        $q = db_query($sql, [$misc, $this->project_id, $field_name]);
         if (!$q) {
-            throw new Exception("Failed to update the database with query: $sql. Error: ". db_error());
+            throw new Exception("Failed to update the database. Error: ". db_error());
         }
         return true;
     }
 
-    /**
-     * Gets a (cached) instance of the Project class
-     * @param string|int $project_id 
-     * @return \Project
-     */
-    private static function easy_GetProject($project_id) {
-        if (!isset(static::$PROJECT_CACHE[$project_id])) {
-            static::$PROJECT_CACHE[$project_id] = new \Project($project_id);
+    private function get_project_forms() {
+        $this->require_proj();
+        return $this->is_draft_mode() ? $this->proj->forms_temp : $this->proj->getForms();
+    }
+
+    private function get_form_fields($form_name) {
+        $this->require_proj();
+        $forms = $this->get_project_forms();
+        if (!isset($forms[$form_name])) {
+            throw new Exception("Form '$form_name' does not exist!");
         }
-        return static::$PROJECT_CACHE[$project_id];
+        return array_keys($forms[$form_name]["fields"]);
+    }
+
+    private function get_project_metadata() {
+        $this->require_proj();
+        return $this->is_draft_mode() ? $this->proj->metadata_temp : $this->proj->getMetadata();
+    }
+
+    private function get_field_metadata($field_name) {
+        $this->require_proj();
+        $meta = $this->get_project_metadata();
+        if (!array_key_exists($field_name, $meta)) {
+            throw new Exception("Field '$field_name' does not exist!");
+        }
+        return $meta[$field_name];
+    }
+
+    private function get_project_metadata_table() {
+        $this->require_proj();
+        return $this->is_draft_mode() ? "redcap_metadata_temp" : "redcap_metadata";
+    }
+
+    private function is_draft_mode() {
+        $this->require_proj();
+        return intval($this->proj->project["status"] ?? 0) > 0;
+    }
+
+    private function get_salt() {
+        $this->require_proj();
+        return $this->proj->project["__SALT__"] ?? "--no-salt--";
+    }
+
+
+    private function init_proj($project_id) {
+        if ($this->proj == null) {
+            $this->proj = new \Project($project_id);
+            $this->project_id = $project_id;
+        }
+    }
+
+    private function require_proj() {
+        if ($this->proj == null) {
+            throw new Exception("Project not initialized");
+        }
+    }
+
+    private function init_config() {
+        $this->require_proj();
+        $setting = $this->getProjectSetting("javascript-debug");
+        $this->js_debug = $setting == true;
     }
 
     #endregion

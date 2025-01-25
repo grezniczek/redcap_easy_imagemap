@@ -1,0 +1,140 @@
+.easy-imagemap-editor {
+    --stroke-width: 1
+}
+.easy-imagemap-editor .modal-header {
+    padding: 0.5rem 1rem;
+    font-size: 20px;
+    display: block;
+}
+.easy-imagemap-editor .modal-header .eim-icon {
+    font-size: 16px;
+}
+.eim-icon {
+    color: orange;
+}
+.easy-imagemap-editor .modal-body {
+    padding: 0.5rem 1rem;
+}
+.easy-imagemap-editor p {
+    margin-top: 0;
+}
+.easy-imagemap-editor .area-style-sample {
+    display: inline-block;
+    width: 4rem;
+    height: 1.9rem;
+    background-color: aqua;
+    position: absolute;
+    margin-left: 10px;
+}
+.easy-imagemap-editor .field-name {
+    font-weight: bold;
+}
+tr.area td {
+    padding: 0.2rem !important;
+}
+tr.area .form-check {
+    margin-top: 8px;
+}
+.assignables .badge {
+    font-weight: normal !important;
+}
+.assignables .badge i {
+    font-size: 70% !important;
+}
+.bootstrap-select .dropdown-menu li a {
+    font-size: 13px;
+}
+.bootstrap-select .dropdown-menu li a:hover {
+    font-size: 13px;
+}
+svg.eim-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    cursor: crosshair;
+    outline: 1px red dotted;
+    outline-offset: -1px;
+}
+svg.eim-svg.inactive {
+    cursor: not-allowed;
+    outline-color: gray;
+}
+svg.eim-svg.preview {
+    cursor: not-allowed;
+    outline: 1px var(--info) solid;
+}
+svg.eim-svg .anchor {
+    cursor: pointer;
+    stroke: black;
+    stroke-width: var(--stroke-width);
+    fill: yellow;
+    opacity: 0.7;
+}
+svg.eim-svg .anchor.active {
+    stroke-width: calc(var(--stroke-width) * 2);
+    fill: red;
+}
+svg.eim-svg polygon {
+    stroke-width: 1;
+    stroke: orange;
+    fill: orange;
+    opacity: 0.3;
+}
+svg.eim-svg polygon.background {
+    cursor: pointer;
+    stroke-width: 1;
+    stroke: blueviolet;
+    fill: blueviolet;
+    opacity: 0.2;
+}
+svg.eim-svg polygon.background.active {
+    display: none;
+}
+svg.eim-svg.preview {
+    cursor: default;
+    outline: 2px var(--bs-info) solid;
+}
+svg.eim-svg.preview polygon.background {
+    opacity: 0;
+    cursor: pointer;
+}
+svg.eim-svg.preview polygon.background.selected {
+    opacity: 0.6;
+}
+svg.eim-svg.preview polygon.background:not(.selected):hover {
+    opacity: 0.1;
+}
+#easy-imagemap-editor-tooltip {
+    background: cornsilk;
+    border: 1px solid black;
+    border-radius: 5px;
+    padding: 2px 5px;
+    z-index: 999999;
+}
+div.eim-style-button {
+    margin-bottom: -8px;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    outline-offset: 1px;
+    outline: 1px black dotted;
+}
+.modal-body.draw {
+    position: relative;
+    max-height: 55%;
+    max-width: 100%;
+    overflow: auto;
+    padding: 5px 15px;
+
+}
+#eim-container {
+    position: relative;
+    min-height: fit-content;
+    padding: 0;
+}
+.modal-body.buttons {
+    min-height: 114px;
+}
+.modal-body.assign {
+    max-height: 40%;
+}
