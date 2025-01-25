@@ -111,7 +111,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $areas = [];
         $targets = [];
         foreach ($map_fields as $map_field_name => $edoc_hash) {
-            $mf_meta = $this->get_field_metadata($map_field_name);
+            $mf_meta = $this->get_field_info($map_field_name);
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
                 list($target_field, $code) = explode("::", $map["target"], 2);
@@ -409,7 +409,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 $field_meta["element_type"] == "descriptive" &&
                 $field_meta["edoc_id"] &&
                 $field_meta["edoc_display_img"] == "1" &&
-                strpos($field_meta["misc"], self::ACTIONTAG) !== false
+                array_pop(ActionTagHelper::parseActionTags($field_meta["misc"], self::ACTIONTAG)) !== null
             ) {
                 $fields[$field_name] = Files::docIdHash($field_meta["edoc_id"], $this->get_salt());
             }
@@ -440,7 +440,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $map["_two-way"] = $data["two-way"];
         $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"]."=".$json;
-        $misc = checkNull(trim(str_replace($search, $replace, $field_data["misc"])));
+        $misc = trim(str_replace($search, $replace, $field_data["misc"]));
         $metadata_table = $this->get_project_metadata_table();
         $field_name = db_escape($field_name);
         // Update field
