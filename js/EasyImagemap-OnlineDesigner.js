@@ -71,7 +71,7 @@ function addOnlineDesignerButtons() {
     for (let fieldName of Object.keys(config.fields)) {
         log('Adding button for field ' + fieldName);
 
-        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs">Configure Imagemap</button></div>');
+        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs"><i class="fa-solid fa-draw-polygon eim-icon me-1"></i> Configure Imagemap</button></div>');
         $btn.on('click', function(e) {
             e.preventDefault();
             $btn.prop('disabled', true);
@@ -155,8 +155,10 @@ function applyZoom(setToZoom) {
         const btn = document.querySelector('button[data-action="' + zoom + '"]');
         if (btn) {
             btn.classList.remove('zoombutton-active')
+            btn.classList.remove('btn-dark')
             if (zoom == setToZoom) {
                 btn.classList.add('zoombutton-active')
+                btn.classList.add('btn-dark')
                 zoomTo(Number.parseInt(zoom.substring(4,5)));
             }
             // @ts-ignore
@@ -537,12 +539,12 @@ function showPreview() {
     if (editorData.mode == 'preview') {
         setMode('');
         $svg.removeClass('preview');
-        $('button[data-action="preview"]').removeClass('preview')
+        $('button[data-action="preview"]').addClass('btn-light').removeClass('btn-info');
     }
     else {
         setMode('preview');
         $svg.addClass('preview');
-        $('button[data-action="preview"]').addClass('preview')
+        $('button[data-action="preview"]').removeClass('btn-light').addClass('btn-info');
     }
 }
 

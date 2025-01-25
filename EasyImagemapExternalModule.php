@@ -211,6 +211,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             .easy-imagemap-editor {
                 --stroke-width: 1
             }
+            .easy-imagemap-editor .modal-header {
+                padding: 0.5rem 1rem;
+                font-size: 20px;
+                display: block;
+            }
+            .easy-imagemap-editor .modal-header .eim-icon {
+                font-size: 16px;
+            }
+            .eim-icon {
+                color: orange;
+            }
             .easy-imagemap-editor .modal-body {
                 padding: 0.5rem 1rem;
             }
@@ -291,7 +302,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             }
             svg.eim-svg.preview {
                 cursor: default;
-                outline: 2px var(--info) solid;
+                outline: 2px var(--bs-info) solid;
             }
             svg.eim-svg.preview polygon.background {
                 opacity: 0;
@@ -318,14 +329,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 outline-offset: 1px;
                 outline: 1px black dotted;
             }
-            .zoombutton-active {
-                outline: 1px blue dotted;
-                outline-offset: -3px;
-            }
-            button[data-action="preview"].preview {
-                outline: 2px white solid;
-                outline-offset: -4px;
-            }
             .modal-body.draw {
                 position: relative;
                 max-height: 55%;
@@ -351,22 +354,28 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             <div class="modal-dialog modal-fullscreen modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
-                        <h4 id="easy-imagemap-editor-title">
-                            Easy Imagemap Editor: <span class="field-name"></span>
-                        </h4>
+                        <div class="eim-editor-title mb-1">
+                            <i class="fa-solid fa-draw-polygon eim-icon me-1"></i>
+                            <span id="easy-imagemap-editor-title">
+                                Easy Imagemap &ndash; Editing field: 
+                                <span class="field-name"></span>
+                            </span>
+                        </div>
+                        <div class="eim-toolbar-top">
+                            <button data-action="preview" class="btn btn-light btn-xs"><i class="fa-solid fa-eye"></i> Preview</button>
+                            |
+                            <button data-action="zoom1x" class="btn btn-light btn-xs zoombutton-active btn-dark"><i class="fa-solid fa-search"></i> 1x</button>
+                            <button data-action="zoom2x" class="btn btn-light btn-xs"><i class="fa-solid fa-search"></i> 2x</button>
+                            <button data-action="zoom3x" class="btn btn-light btn-xs"><i class="fa-solid fa-search"></i> 3x</button>
+                            <button data-action="zoom4x" class="btn btn-light btn-xs"><i class="fa-solid fa-search"></i> 4x</button>
+                        </div>
                     </div>
                     <div class="modal-body draw">
                         <div id="eim-container" class="empty-on-close"></div>
                     </div>
                     <div class="modal-body buttons">
                         <div>
-                            <button data-action="add-area" class="btn btn-success btn-sm"><i class="fas fa-plus"></i> Add new area</button>
-                            <button data-action="preview" class="btn btn-info btn-sm"><i class="fas fa-eye"></i> Preview</button>
-                            |
-                            <button data-action="zoom1x" class="btn btn-light btn-sm zoombutton-active"><i class="fas fa-search"></i> 1x</button>
-                            <button data-action="zoom2x" class="btn btn-light btn-sm"><i class="fas fa-search"></i> 2x</button>
-                            <button data-action="zoom3x" class="btn btn-light btn-sm"><i class="fas fa-search"></i> 3x</button>
-                            <button data-action="zoom4x" class="btn btn-light btn-sm"><i class="fas fa-search"></i> 4x</button>
+                            
                             |
                             <div class="form-check form-check-inline">
                                 <label class="form-check-label" for="eim-two-way">Two way updates:</label>
@@ -394,13 +403,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <table class="table table-sm">
                             <thead>
                                 <tr>
-                                    <th scope="col"><i class="fas fa-pen-nib"></i> Edit</th>
-                                    <th scope="col"><a data-action="toggle-select-all" href="javascript:;"><i class="fas fa-check"></i> Select</a></th>
+                                    <th scope="col"><i class="fa-solid fa-pencil"></i> Edit</th>
+                                    <th scope="col"><a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i> Select</a></th>
                                     <th scope="col">
-                                        <i class="fas fa-exchange-alt"></i> Field
+                                        <i class="fa-solid fa-exchange-alt"></i> Field
                                     </th>
-                                    <th scope="col"><i class="fas fa-palette"></i> Style</th>
-                                    <th scope="col"><i class="fas fa-bolt"></i> Actions</th>
+                                    <th scope="col"><i class="fa-solid fa-palette"></i> Style</th>
+                                    <th scope="col"><i class="fa-solid fa-bolt"></i> Actions</th>
                                 </tr>
                             </thead>
                             <tbody class="area-list empty-on-close">
@@ -429,12 +438,16 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                         <div data-action="none" class="area-style-sample"></div>
                                     </td>
                                     <td>
-                                        <button data-action="remove-area" class="btn btn-default btn-sm"><i class="fas fa-close text-danger"></i></button>
+                                        <button data-action="add-area" class="btn btn-default btn-xs"><i class="fa-solid fa-add"></i></button>
+                                        <button data-action="duplicate-area" class="btn btn-default btn-xs"><i class="fa-solid fa-clone"></i></button>
+                                        <button data-action="remove-area" class="btn btn-default btn-xs"><i class="fa-solid fa-trash text-danger"></i></button>
                                     </td>
                                 </tr>
                             </template>
                         </table>
-                        <p class="show-when-no-areas"><i>No areas have been defined yet.</i></p>
+                        <p class="show-when-no-areas"><i>No areas have been defined yet.</i>
+                            <button data-action="add-area" class="btn btn-success btn-xs"><i class="fa-solid fa-add"></i></button>
+                        </p>
                     </div>
                     <div class="modal-footer">
                         <button data-action="clear-areas" class="btn btn-link btn-xs text-danger" style="margin-right:auto;"><i class="far fa-trash-alt"></i> Reset (remove all areas)</button>
