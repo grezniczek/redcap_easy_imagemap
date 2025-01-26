@@ -219,22 +219,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <button type="button" data-action="preview" class="btn btn-outline-primary"><i class="fa-solid fa-eye"></i> Preview</button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Magnification controls">
-                                <button type="button" class="btn btn-outline-dark" disabled><i class="fa-solid fa-search"></i></button>
-                                <button type="button" data-action="zoom1x" class="btn btn-dark zoombutton-active">1x</button>
-                                <button type="button" data-action="zoom2x" class="btn btn-outline-dark">2x</button>
-                                <button type="button" data-action="zoom3x" class="btn btn-outline-dark">3x</button>
-                                <button type="button" data-action="zoom4x" class="btn btn-outline-dark">4x</button>
+                                <button type="button" class="btn btn-outline-secondary" disabled><i class="fa-solid fa-search"></i></button>
+                                <button type="button" data-action="zoom1x" class="btn btn-secondary zoombutton-active">1x</button>
+                                <button type="button" data-action="zoom2x" class="btn btn-outline-secondary">2x</button>
+                                <button type="button" data-action="zoom3x" class="btn btn-outline-secondary">3x</button>
+                                <button type="button" data-action="zoom4x" class="btn btn-outline-secondary">4x</button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Edit mode">
-                                <button type="button" class="btn btn-outline-dark" disabled>Mode</button>
-                                <button type="button" data-action="mode-edit" class="btn btn-dark"><i class="fa-solid fa-pen-nib"></i></button>
-                                <button type="button" data-action="mode-move" class="btn btn-outline-dark"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+                                <button type="button" class="btn btn-outline-secondary text-dark" disabled>Mode</button>
+                                <button type="button" data-action="mode-edit" class="btn btn-secondary"><i class="fa-solid fa-pen-nib"></i></button>
+                                <button type="button" data-action="mode-move" class="btn btn-outline-secondary"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Shape type">
-                                <button type="button" class="btn btn-outline-dark" disabled>Shape</button>
-                                <button type="button" data-action="type-ellipse" class="btn btn-dark"><i class="fa-regular fa-circle"></i></button>
-                                <button type="button" data-action="type-rectangle" class="btn btn-outline-dark"><i class="fa-regular fa-square"></i></button>
-                                <button type="button" data-action="type-polygon" class="btn btn-outline-dark"><i class="fa-solid fa-draw-polygon"></i></button>
+                                <button type="button" class="btn btn-outline-secondary text-dark" disabled>Shape</button>
+                                <button type="button" data-action="type-ellipse" class="btn btn-secondary"><i class="fa-regular fa-circle"></i></button>
+                                <button type="button" data-action="type-rectangle" class="btn btn-outline-secondary"><i class="fa-regular fa-square"></i></button>
+                                <button type="button" data-action="type-polygon" class="btn btn-outline-secondary"><i class="fa-solid fa-draw-polygon"></i></button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Styling">
                                 <button class="btn btn-outline-primary text-dark" disabled>Style</button>
@@ -242,6 +242,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <button data-action="style-hover" class="btn btn-outline-primary"><i class="fa-solid fa-arrow-pointer"></i></button>
                                 <button data-action="style-selected" class="btn btn-outline-primary"><i class="fa-solid fa-square-check"></i></button>
                                 <button data-action="style-apply-to-selected" class="btn btn-outline-primary"><i class="fa-solid fa-right-to-bracket"></i></button>
+                            </div>
+                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Settings">
+                                <button data-action="change-settings" class="btn btn-outline-secondary"><i class="fa-solid fa-cog"></i></button>
                             </div>
                         </div>
                     </div>

@@ -1,5 +1,12 @@
 .easy-imagemap-editor {
-    --stroke-width: 1
+    --stroke-width: 1;
+    --anchor-fill-color: yellow;
+    --anchor-active-fill-color: red;
+    --anchor-stroke-color: black;
+    --shape-color: blue;
+    --shape-active-color: red;
+    --shape-opacity: 0.2;
+    --shape-active-opacity: 0.3;
 }
 .easy-imagemap-editor .modal-header {
     padding: 0.5rem 1rem;
@@ -52,40 +59,36 @@ svg.eim-svg {
     left: 0;
     top: 0;
     cursor: crosshair;
-    outline: 1px red dotted;
+    outline: 1px orange dotted;
     outline-offset: -1px;
 }
-svg.eim-svg.inactive {
-    cursor: not-allowed;
-    outline-color: gray;
-}
+svg.eim-svg.inactive, 
 svg.eim-svg.preview {
     cursor: not-allowed;
-    outline: 1px var(--info) solid;
 }
 svg.eim-svg .anchor {
     cursor: pointer;
-    stroke: black;
+    stroke: var(--anchor-stroke-color);
     stroke-width: var(--stroke-width);
-    fill: yellow;
+    fill: var(--anchor-fill-color);
     opacity: 0.7;
 }
 svg.eim-svg .anchor.active {
     stroke-width: calc(var(--stroke-width) * 2);
-    fill: red;
+    fill: var(--anchor-active-fill-color);
 }
 svg.eim-svg polygon {
     stroke-width: 1;
-    stroke: orange;
-    fill: orange;
-    opacity: 0.3;
+    stroke:var(--shape-active-color);
+    fill: var(--shape-active-color);
+    opacity: var(--shape-active-opacity);
 }
 svg.eim-svg polygon.background {
     cursor: pointer;
     stroke-width: 1;
-    stroke: blueviolet;
-    fill: blueviolet;
-    opacity: 0.2;
+    stroke: var(--shape-color);
+    fill: var(--shape-color);
+    opacity: var(--shape-opacity);
 }
 svg.eim-svg polygon.background.active {
     display: none;
