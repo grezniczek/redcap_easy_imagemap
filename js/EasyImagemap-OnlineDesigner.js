@@ -58,82 +58,7 @@ function initialize(config_data, jsmo_obj) {
     }
 }
 
-//#region Table Drag & Drop
-
-function setupTableDnD() {
-    if (dndInitialized) return;
-
-    const tableBody = document.querySelector('tbody.area-list');
-    if (!tableBody) return;
-
-    let draggedRow = null;
-
-    tableBody.addEventListener('dragstart', (e) => {
-        if (e.target.tagName === 'TD') {
-            log('dragstart', e);
-            draggedRow = e.target.parentElement;
-            draggedRow.classList.add('dragging');
-            // Set TR as drag image
-            e.dataTransfer.setDragImage(draggedRow, 0, 0);
-        }
-    });
-
-    tableBody.addEventListener('dragend', (e) => {
-        if (e.target.tagName === 'TD') {
-            log('dragend', e);
-            draggedRow.classList.remove('dragging');
-            draggedRow = null;
-        }
-    });
-
-    tableBody.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        const closestRow = getClosestRow(e.clientY);
-        if (draggedRow && closestRow && closestRow !== draggedRow) {
-            const draggingRect = draggedRow.getBoundingClientRect();
-            const closestRect = closestRow.getBoundingClientRect();
-
-            // Insert dragged row above or below based on cursor position
-            if (e.clientY > closestRect.top + closestRect.height / 2) {
-                closestRow.after(draggedRow);
-            } else {
-                closestRow.before(draggedRow);
-            }
-        }
-    });
-
-    function getClosestRow(y) {
-        const rows = Array.from(tableBody.querySelectorAll('tr:not(.dragging)'));
-        return rows.reduce((closest, child) => {
-            const box = child.getBoundingClientRect();
-            const offset = Math.abs(y - box.top - box.height / 2);
-            if (offset < closest.offset) {
-                return { element: child, offset: offset };
-            }
-            return closest;
-        }, { element: null, offset: Number.POSITIVE_INFINITY }).element;
-    }
-
-    dndInitialized = true;
-}
-
-//#endregion
-
-
-
-function updateFields() {
-    JSMO.ajax('get-fields', config.form).then(function(data) {
-        log('Updated fields:', data)
-        config.fields = data
-        setTimeout(function() {
-            addOnlineDesignerButtons();
-        }, 0);
-    });
-}
-
-
-
-
+//#region Online Designer
 
 function addOnlineDesignerButtons() {
     $('.eim-configure-button').remove();
@@ -164,6 +89,84 @@ function addOnlineDesignerButtons() {
         $('#design-' + fieldName + ' td.labelrc').append($btn).children().wrapAll('<div style="position:relative;"></div>');
     }
 }
+
+//#endregion
+
+
+//#region Table Drag & Drop
+
+function setupTableDnD() {
+    if (dndInitialized) return;
+
+    const tableBody = document.querySelector('tbody.area-list');
+    if (!tableBody) return;
+
+    let draggedRow = null;
+
+    tableBody.addEventListener('dragstart', (e) => {
+        const tagName = e && e.target ? e.target['tagName'] ?? '' : '';
+        if (e.target && tagName === 'TD') {
+            draggedRow = e.target['parentElement'];
+            draggedRow.classList.add('dragging');
+            // Set TR as drag image
+            e['dataTransfer'].setDragImage(draggedRow, 0, 0);
+        }
+    });
+
+    tableBody.addEventListener('dragend', (e) => {
+        const tagName = e && e.target ? e.target['tagName'] ?? '' : '';
+        if (tagName === 'TD') {
+            draggedRow.classList.remove('dragging');
+            draggedRow = null;
+        }
+    });
+
+    tableBody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const clientY = e['clientY'] * 1;
+        const closestRow = getClosestRow(clientY);
+        if (draggedRow && closestRow && closestRow !== draggedRow) {
+            const closestRect = closestRow.getBoundingClientRect();
+            // Insert dragged row above or below based on cursor position
+            if (clientY > closestRect.top + closestRect.height / 2) {
+                closestRow.after(draggedRow);
+            } else {
+                closestRow.before(draggedRow);
+            }
+        }
+    });
+
+    function getClosestRow(y) {
+        if (!tableBody) return null;
+        const rows = Array.from(tableBody.querySelectorAll('tr:not(.dragging)'));
+        // @ts-ignore
+        return rows.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = Math.abs(y - box.top - box.height / 2);
+            if (offset < closest.offset) {
+                return { element: child, offset: offset };
+            }
+            return closest;
+        }, { element: null, offset: Number.POSITIVE_INFINITY })['element'];
+    }
+
+    dndInitialized = true;
+}
+
+//#endregion
+
+
+
+function updateFields() {
+    JSMO.ajax('get-fields', config.form).then(function(data) {
+        log('Updated fields:', data)
+        config.fields = data
+        setTimeout(function() {
+            addOnlineDesignerButtons();
+        }, 0);
+    });
+}
+
 
 function editImageMap() {
     $editor.find('.field-name').text(editorData.fieldName);
@@ -251,6 +254,9 @@ function updateCurrentArea() {
     log('Todo: Update area', currentArea);
 }
 
+
+//#region Zoom
+
 function applyZoom(setToZoom) {
     ['zoom1x','zoom2x','zoom3x','zoom4x'].forEach((zoom) => {
         const btn = document.querySelector('button[data-action="' + zoom + '"]');
@@ -267,6 +273,7 @@ function applyZoom(setToZoom) {
         }
     });
 }
+
 function zoomTo(f) {
     log('Setting zoom level to: ' + f);
     zoom = f;
@@ -285,6 +292,7 @@ function zoomTo(f) {
     }
 }
 
+//#endregion
 
 function areasFromMap(map) {
     const areas = {};
@@ -411,6 +419,7 @@ function clearAnchors() {
     updatePolygon();
 }
 
+//#region Tooltip
 
 function showTooltip(evt, id) {
     if (editorData.mode == '' && evt.target.classList.contains('background')) {
@@ -429,6 +438,7 @@ function hideTooltip() {
     $tooltip.hide().html('');
 }
 
+//#endregion
 
 /**
  * 
@@ -661,6 +671,10 @@ function showPreview() {
     }
 }
 
+
+//#region Action Dispatcher
+
+
 function executeEditorAction(action, $row) {
     log('Editor action: ' + action)
     switch (action) {
@@ -681,6 +695,8 @@ function executeEditorAction(action, $row) {
             applyEditMode(action);
         break;
 
+        //#endregion
+
 
         case 'assign-target': {
             const id = $row.attr('data-area-id');
@@ -689,16 +705,6 @@ function executeEditorAction(action, $row) {
             const label = $row.find('select option[value="' + code + '"]').attr('data-content');
             editorData.areas[id].label = label;
         }
-        break;
-        // case 'clear-areas': {
-        //     editorData.areas = {};
-        //     $editor.find('tr.area').remove();
-        //     $svg.find('polygon.background').each(function() {
-        //         this.remove();
-        //     });
-        //     setCurrentArea(null);
-        //     showWhenNoAreas();
-        // }
         break;
         case 'style-area': {
             const id = $row.attr('data-area-id');
@@ -781,6 +787,7 @@ function executeEditorAction(action, $row) {
     }
 }
 
+//#endregion
 
 //#region Helpers
 
