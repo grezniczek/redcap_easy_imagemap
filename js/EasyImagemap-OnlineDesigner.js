@@ -51,7 +51,7 @@ function initialize(config_data, jsmo_obj) {
         }
         // Setup editor and events
         $editor = $('.modal.eim-editor');
-        $editor.find('[data-action]').on('click', handleEditorActionEvent);
+        $editor.on('click', handleEditorActionEvent);
 
         // Add buttons
         addOnlineDesignerButtons();
@@ -653,7 +653,6 @@ function addTableRow(id, afterId = '') {
     $select.val(editorData.areas[id].target);
     // @ts-ignore
     $select.selectpicker() //.select2();
-    $row.on('click', handleEditorActionEvent);
     if (afterId == '') {
         $editor.find('tbody.area-list').append($row);
     }
