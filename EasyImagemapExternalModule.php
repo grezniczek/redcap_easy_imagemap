@@ -345,9 +345,15 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                                 </div>
                                             </td>
                                             <td>
-                                                <button data-action="add-area" class="btn btn-default btn-xs"><i class="fa-solid fa-add"></i></button>
-                                                <button data-action="duplicate-area" class="btn btn-default btn-xs"><i class="fa-solid fa-clone"></i></button>
-                                                <button data-action="remove-area" class="btn btn-default btn-xs"><i class="fa-solid fa-trash-can text-danger"></i></button>
+                                                <button data-action="add-area" class="btn btn-default btn-xs" title="Add new row after this one">
+                                                    <i class="fa-solid fa-add"></i>
+                                                </button>
+                                                <button data-action="duplicate-area" class="btn btn-default btn-xs" title="Add a new row based on this one">
+                                                    <i class="fa-solid fa-clone"></i>
+                                                </button>
+                                                <button data-action="remove-area" class="btn btn-default btn-xs" title="Remove this row">
+                                                    <i class="fa-solid fa-trash-can text-danger"></i>
+                                                </button>
                                             </td>
                                         </tr>
                                     </template>
