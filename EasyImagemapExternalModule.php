@@ -322,8 +322,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     </thead>
                                     <tbody class="area-list empty-on-close"></tbody>
                                     <template data-eim-template="area-row">
-                                        <tr data-area-id class="area" draggable="true">
-                                            <td class="drag-handle">
+                                        <tr data-area-id class="area">
+                                            <td class="drag-handle" draggable="true">
                                                 <div draggable="area">
                                                     <i class="fa-solid fa-ellipsis-vertical" draggable="area"></i>
                                                 </div>

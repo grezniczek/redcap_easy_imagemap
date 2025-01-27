@@ -58,6 +58,8 @@ function initialize(config_data, jsmo_obj) {
     }
 }
 
+//#region Table Drag & Drop
+
 function setupTableDnD() {
     if (dndInitialized) return;
 
@@ -67,17 +69,19 @@ function setupTableDnD() {
     let draggedRow = null;
 
     tableBody.addEventListener('dragstart', (e) => {
-        if (e.target.tagName === 'TR') {
+        if (e.target.tagName === 'TD') {
             log('dragstart', e);
-            draggedRow = e.target;
-            e.target.classList.add('dragging');
+            draggedRow = e.target.parentElement;
+            draggedRow.classList.add('dragging');
+            // Set TR as drag image
+            e.dataTransfer.setDragImage(draggedRow, 0, 0);
         }
     });
 
     tableBody.addEventListener('dragend', (e) => {
-        log('dragend', e);
-        if (e.target.tagName === 'TR') {
-            e.target.classList.remove('dragging');
+        if (e.target.tagName === 'TD') {
+            log('dragend', e);
+            draggedRow.classList.remove('dragging');
             draggedRow = null;
         }
     });
@@ -113,7 +117,7 @@ function setupTableDnD() {
     dndInitialized = true;
 }
 
-
+//#endregion
 
 
 
