@@ -52,6 +52,7 @@ function initialize(config_data, jsmo_obj) {
         // Setup editor and events
         $editor = $('.modal.eim-editor');
         $editor.on('click', handleEditorActionEvent);
+        $editor.on('keydown', handleKeyEvent);
 
         // Add buttons
         addOnlineDesignerButtons();
@@ -169,6 +170,8 @@ function updateFields() {
 
 
 function editImageMap() {
+    currentArea = null;
+    currentAnchor = null;
     $editor.find('.field-name').text(editorData.fieldName);
     const $container = $editor.find('#eim-container');
     $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]').clone();
@@ -193,7 +196,6 @@ function editImageMap() {
         height: h
     };
     svg = $svg[0];
-    svg.addEventListener('keydown', handleKeyEvent);
     svg.addEventListener('pointerup', handleSVGEvent);
     svg.addEventListener('pointerdown', handleSVGEvent);
     svg.addEventListener('pointermove', handleSVGEvent);
@@ -388,6 +390,7 @@ function removeAnchor(anchor) {
 }
 
 function setMode(mode) {
+    if (mode == editorData.mode) return;
     editorData.mode = mode;
     log('Mode updated to: ' + mode);
     if (mode == 'preview') {
@@ -415,20 +418,45 @@ function setMode(mode) {
 
 
 function handleKeyEvent(e) {
-    if (editorData.mode != '') return; // Do not act when in any mode
-    if (e.altKey || e.ctrlKey || e.shiftKey) return; // Ignore any combinations with modifiers
-    const n = editorData.anchors.length;
-    if (n == 0) return; // Nothing to do
-    if (e.key == 'Backspace' && currentAnchor) {
-        removeAnchor(currentAnchor);
-        updatePolygon();
+    if (e.target.tagName == 'INPUT' || e.target.tagName == 'TEXTAREA') return;
+    // Key handling depends on mode
+    // Preview mode
+    if (editorData.mode == 'preview') {
+        if (e.altKey || e.ctrlKey || e.shiftKey) return; // Ignore any combinations with modifiers
+        // Esc exits preview mode
+        if (e.key == 'Escape') {
+            setMode('edit');
+            e.preventDefault();
+            return false;
+        }
     }
-    else if (e.key == 'Delete') {
-        log(e);
-        e.preventDefault();
-        clearAnchors();
+    else if (editorData.mode == 'move') {
+        // TODO
     }
-    return false;
+    else if (editorData.mode == 'edit') {
+        const modifier = [
+            e.altKey ? 'Alt' : '',
+            e.ctrlKey ? 'Ctrl' : '',
+            e.shiftKey ? 'Shift' : ''
+        ].join('');
+        // Esc will undo any changes
+        if (modifier == '' && e.key == 'Escape') {
+            // TODO
+            e.preventDefault();
+            return false;
+        }
+        else if (modifier == '' && e.key == 'Backspace' && currentAnchor) {
+            removeAnchor(currentAnchor);
+            updatePolygon();
+            e.preventDefault();
+            return false;
+        }
+        else if (currentAnchor && modifier == '' && e.key == 'Delete') {
+            clearAnchors();
+            e.preventDefault();
+            return false;
+        }
+    }
 }
 
 function clearAnchors() {
@@ -441,7 +469,7 @@ function clearAnchors() {
 //#region Tooltip
 
 function showTooltip(evt, id) {
-    if (['edit','move'].includes(editorData.mode) && evt.target.classList.contains('background')) {
+    if (['edit','move'].includes(editorData.mode) && evt.target.classList.contains('background') && !evt.target.classList.contains('editing')) {
         const text = assignableLabels[editorData.areas[id].target] ?? '';
         if (text && text != '') {
             const $tooltip = $('#eim-editor-tooltip');
@@ -472,7 +500,7 @@ function handleSVGEvent(e) {
     const $target = $(e.target);
 
     // Select an area
-    if (editorData.mode == '' && type == 'pointerdown' && $target.hasClass('background')) {
+    if (editorData.mode == 'edit' && type == 'pointerdown' && $target.hasClass('background') && $target.attr('data-id') != currentArea) {
         const id = $target.attr('data-id');
         setCurrentArea(id);
         return;
@@ -493,7 +521,7 @@ function handleSVGEvent(e) {
     if (!currentArea) return;
 
     // Start an dragging or moving process
-    if (editorData.mode == '' && type == 'pointerdown') {
+    if (editorData.mode == 'edit' && type == 'pointerdown') {
         // Check if over existing anchor
         if ($target.hasClass('anchor')) {
             // Set this anchor as the active one
@@ -553,12 +581,13 @@ function showWhenNoAreas() {
 }
 
 
-function addBackgroundPoly(id) {
+function addBackgroundPoly(id, editing = false) {
     const area = editorData.areas[id];
     // Add a polygon for this area
     const $bgPoly = $svg.find('polygon[data-id="' + id + '"]')
     if ($bgPoly.length == 1) {
         $bgPoly[0].setAttributeNS(null, 'points', area.points ?? '');
+        $bgPoly[0].classList[editing ? 'add' : 'remove']('editing');
     }
     else {
         const bgPoly = createSVG('polygon', { 
@@ -566,6 +595,7 @@ function addBackgroundPoly(id) {
             'class': 'background',
             'data-id': id,
         });
+        bgPoly.classList[editing ? 'add' : 'remove']('editing');
         bgPoly.addEventListener('pointerout', hideTooltip);
         bgPoly.addEventListener('pointermove', function(e) { showTooltip(e, id); });
         svg.prepend(bgPoly);
@@ -584,64 +614,51 @@ function setCurrentArea(id) {
                 this.classList.remove('active');
             }
         });
+        clearAnchors();
+        $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', false);
     }
-    if (id == null) {
-        if (currentArea) {
-            clearAnchors();
-            $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', false);
-            currentArea = null; 
-        }
-        return;
-    }
+    currentArea = id;
+    if (currentArea == null) return;
 
     let area = null;
-    currentArea = id ?? null;
-    if (currentArea != null) {
-        // Ensure to reset the mode
-        setMode('edit');
-        $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', true);
-        $svg.removeClass('inactive');
-        if (!editorData.areas) {
-            editorData.areas = {};
-        }
-        if (!editorData.areas[currentArea]) {
-            editorData.areas[currentArea] = {};
-        }
-        area = editorData.areas[currentArea];
-        addBackgroundPoly(currentArea);
-        clearAnchors();
-        // Add new anchors
-        try {
-            if (typeof area.points == 'string' && area.points != '') {
-                for (let coords of area.points.split(' ')) {
-                    const pos = coords.split(',');
-                    const x = Number.parseInt(pos[0]);
-                    const y = Number.parseInt(pos[1]);
-                    const anchor = createSVG('circle', {
-                        cx: x,
-                        cy: y,
-                        r: 4 / zoom,
-                        'class': 'anchor',
-                    });
-                    svg.appendChild(anchor);
-                    editorData.anchors.push(anchor);
-                }
+    // Ensure to reset the mode
+    setMode('edit');
+    $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', true);
+    $svg.removeClass('inactive');
+    if (!editorData.areas) {
+        editorData.areas = {};
+    }
+    if (!editorData.areas[currentArea]) {
+        editorData.areas[currentArea] = {};
+    }
+    area = editorData.areas[currentArea];
+    addBackgroundPoly(currentArea, true);
+    clearAnchors();
+    // Add new anchors
+    try {
+        if (typeof area.points == 'string' && area.points != '') {
+            for (let coords of area.points.split(' ')) {
+                const pos = coords.split(',');
+                const x = Number.parseInt(pos[0]);
+                const y = Number.parseInt(pos[1]);
+                const anchor = createSVG('circle', {
+                    cx: x,
+                    cy: y,
+                    r: 4 / zoom,
+                    'class': 'anchor',
+                });
+                svg.appendChild(anchor);
+                editorData.anchors.push(anchor);
             }
-            activateAnchor(null);
-            updatePolygon();
         }
-        catch (ex) {
-            showToast('Failed to initialize area. Check console for details.', true);
-            error(ex);
-        }
+        activateAnchor(null);
+        updatePolygon();
     }
-    else {
-        $('tr[data-area-id]').find('input[name=active-area]').prop('checked', false);
-        clearAnchors();
-        $svg.addClass('inactive');
+    catch (ex) {
+        showToast('Failed to initialize area. Check console for details.', true);
+        error(ex);
     }
-    log('Activating area:', area);
-    // TODO
+    log('Activated area:', area);
 }
 
 function handleEditorActionEvent(e) {

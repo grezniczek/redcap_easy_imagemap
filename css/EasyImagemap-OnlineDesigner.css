@@ -100,6 +100,9 @@ svg.eim-svg polygon.background {
     fill: var(--shape-color);
     opacity: var(--shape-opacity);
 }
+svg.eim-svg polygon.background.editing {
+    cursor: crosshair;
+}
 svg.eim-svg polygon.background.active {
     display: none;
 }
