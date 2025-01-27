@@ -203,7 +203,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         #region Editor Modal
         ?>
         <div id="eim-editor-tooltip" style="position:absolute;display:none;"></div>
-        <div class="eim-editor modal" tabindex="-1" role="dialog" aria-labelledby="eim-editor-title" aria-hidden="true">
+        <div class="eim-editor modal" tabindex="-1" role="dialog" aria-labelledby="eim-editor-title">
             <div class="modal-dialog modal-fullscreen modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">

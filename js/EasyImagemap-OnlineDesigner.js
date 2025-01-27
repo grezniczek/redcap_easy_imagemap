@@ -143,7 +143,9 @@ function editImageMap() {
     // Some logging
     log('Invoking editor for ' + editorData.fieldName, editorData);
     // Hide REDCap's move to top button
-    $('.to-top-button').hide();
+    setTimeout(() => {
+        $('.to-top-button').hide();
+    }, 10);
     // Finally, show the dialog
     // @ts-ignore
     $editor.modal('show', { backdrop: 'static' });
