@@ -212,7 +212,6 @@ function editImageMap() {
     // Hide REDCap's move to top button
     setTimeout(() => {
         $('.to-top-button').hide();
-        $('table#draggable').css('pointer-events', 'none');
     }, 10);
     // Finally, show the dialog
     // @ts-ignore
@@ -753,10 +752,11 @@ function executeEditorAction(action, $row) {
             editorData = null;
             $editor.find('.empty-on-close').children().remove();
             $editor.find('.remove-on-close').remove();
+            // Prevent focus error
+            if (document.activeElement && typeof document.activeElement['blur'] == 'function') document.activeElement['blur']();
             // Close editor
             // @ts-ignore
             $editor.modal('hide');
-            $('table#draggable').css('pointer-events', '');
             $('.to-top-button').show();
         }
         break;
