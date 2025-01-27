@@ -24,6 +24,8 @@ let currentAnchor = null;
 let poly = null;
 let assignableLabels = {};
 let zoom = 1;
+let editMode = 'edit';
+let dndInitialized = false;
 
 
 function initialize(config_data, jsmo_obj) {
@@ -56,6 +58,65 @@ function initialize(config_data, jsmo_obj) {
     }
 }
 
+function setupTableDnD() {
+    if (dndInitialized) return;
+
+    const tableBody = document.querySelector('tbody.area-list');
+    if (!tableBody) return;
+
+    let draggedRow = null;
+
+    tableBody.addEventListener('dragstart', (e) => {
+        if (e.target.tagName === 'TR') {
+            log('dragstart', e);
+            draggedRow = e.target;
+            e.target.classList.add('dragging');
+        }
+    });
+
+    tableBody.addEventListener('dragend', (e) => {
+        log('dragend', e);
+        if (e.target.tagName === 'TR') {
+            e.target.classList.remove('dragging');
+            draggedRow = null;
+        }
+    });
+
+    tableBody.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const closestRow = getClosestRow(e.clientY);
+        if (draggedRow && closestRow && closestRow !== draggedRow) {
+            const draggingRect = draggedRow.getBoundingClientRect();
+            const closestRect = closestRow.getBoundingClientRect();
+
+            // Insert dragged row above or below based on cursor position
+            if (e.clientY > closestRect.top + closestRect.height / 2) {
+                closestRow.after(draggedRow);
+            } else {
+                closestRow.before(draggedRow);
+            }
+        }
+    });
+
+    function getClosestRow(y) {
+        const rows = Array.from(tableBody.querySelectorAll('tr:not(.dragging)'));
+        return rows.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = Math.abs(y - box.top - box.height / 2);
+            if (offset < closest.offset) {
+                return { element: child, offset: offset };
+            }
+            return closest;
+        }, { element: null, offset: Number.POSITIVE_INFINITY }).element;
+    }
+
+    dndInitialized = true;
+}
+
+
+
+
+
 function updateFields() {
     JSMO.ajax('get-fields', config.form).then(function(data) {
         log('Updated fields:', data)
@@ -65,6 +126,10 @@ function updateFields() {
         }, 0);
     });
 }
+
+
+
+
 
 function addOnlineDesignerButtons() {
     $('.eim-configure-button').remove();
@@ -138,6 +203,8 @@ function editImageMap() {
     }
     // UI updates
     showWhenNoAreas();
+    // Drag and drop support
+    setupTableDnD();
     // Set two-way checkbox
     $editor.find('input[name=two-way]').prop('checked', editorData['two-way']);
     // Some logging
@@ -145,12 +212,41 @@ function editImageMap() {
     // Hide REDCap's move to top button
     setTimeout(() => {
         $('.to-top-button').hide();
+        $('table#draggable').css('pointer-events', 'none');
     }, 10);
     // Finally, show the dialog
     // @ts-ignore
     $editor.modal('show', { backdrop: 'static' });
 }
 
+function applyEditMode(setToMode) {
+    const prevEditMode = editMode;
+    const editModes = ['edit','move'];
+    if (!editModes.includes(setToMode.replace('mode-',''))) {
+        error('Invalid edit mode ' + setToMode);
+    }
+    editMode = setToMode.replace('mode-','');
+    editModes.forEach((mode) => {
+        const btn = document.querySelector('button[data-action="mode-' + mode + '"]');
+        if (btn) {
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-outline-secondary');
+            if (mode == editMode) {
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-secondary');
+            }
+            // @ts-ignore
+            btn.blur();
+        }
+    });
+    if (prevEditMode != editMode && currentArea) {
+        updateCurrentArea();
+    }
+}
+
+function updateCurrentArea() {
+    log('Todo: Update area', currentArea);
+}
 
 function applyZoom(setToZoom) {
     ['zoom1x','zoom2x','zoom3x','zoom4x'].forEach((zoom) => {
@@ -284,6 +380,13 @@ function setMode(mode) {
     editorData.mode = mode;
     log('Mode updated to: ' + mode);
 }
+
+function setEditMode(mode) {
+    editMode = mode;
+
+    log('Edit mode updated to: ' + editMode);
+}
+
 
 function handleKeyEvent(e) {
     if (editorData.mode != '') return; // Do not act when in any mode
@@ -454,6 +557,15 @@ function setCurrentArea(id) {
             }
         })
     }
+    if (id == null) {
+        if (currentArea) {
+            clearAnchors();
+            $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', false);
+            currentArea = null; 
+        }
+        return;
+    }
+
     let area = null;
     currentArea = id ?? null;
     if (currentArea != null) {
@@ -553,6 +665,24 @@ function showPreview() {
 function executeEditorAction(action, $row) {
     log('Editor action: ' + action)
     switch (action) {
+        //#region Main Toolbar
+        case 'preview': {
+            applyZoom('zoom1x');
+            showPreview();
+        }
+        break;
+        case 'zoom1x':
+        case 'zoom2x':
+        case 'zoom3x':
+        case 'zoom4x':
+            applyZoom(action);
+        break;
+        case 'mode-edit': 
+        case 'mode-move':
+            applyEditMode(action);
+        break;
+
+
         case 'assign-target': {
             const id = $row.attr('data-area-id');
             const code = $row.find('select').val();
@@ -582,7 +712,12 @@ function executeEditorAction(action, $row) {
         break;
         case 'toggle-select-all': {
             toggleSelectAll();
+            $('[data-action="toggle-select-all"]')[0].blur();
         }
+        break;
+        case 'reset-area':
+            setCurrentArea(null);
+            $('[data-action="reset-area"]')[0].blur();
         break;
         case 'edit-area': {
             const id = $row.attr('data-area-id');
@@ -612,11 +747,6 @@ function executeEditorAction(action, $row) {
             }
         }
         break;
-        case 'preview': {
-            applyZoom('zoom1x');
-            showPreview();
-        }
-        break;
         case 'cancel': {
             // Reset
             applyZoom('zoom1x');
@@ -626,6 +756,7 @@ function executeEditorAction(action, $row) {
             // Close editor
             // @ts-ignore
             $editor.modal('hide');
+            $('table#draggable').css('pointer-events', '');
             $('.to-top-button').show();
         }
         break;
@@ -646,12 +777,6 @@ function executeEditorAction(action, $row) {
                 error(err);
             });
         }
-        break;
-        case 'zoom1x':
-        case 'zoom2x':
-        case 'zoom3x':
-        case 'zoom4x':
-            applyZoom(action);
         break;
     }
 }

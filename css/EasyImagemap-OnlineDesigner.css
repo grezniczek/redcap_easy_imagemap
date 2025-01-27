@@ -30,7 +30,7 @@
     flex-direction: column;
 }
 .eim-editor .area-assignments-table {
-    max-width: 445px;
+    max-width: 460px;
     margin: 10px 0;
     padding-right: 5px;
     overflow-y: scroll;
@@ -150,4 +150,13 @@ table.eim-areas th.eim-col-style {
 }
 table.eim-areas th.eim-col-target {
     padding-left: 14px;
+}
+.eim-editor .drag-handle {
+    cursor: grab;
+    text-align: center;
+    width: 10px;
+    color: rgb(139, 154, 218);
+}
+.eim-editor tr.dragging {
+    opacity: .5;
 }

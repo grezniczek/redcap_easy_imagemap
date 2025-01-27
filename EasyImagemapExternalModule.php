@@ -308,17 +308,26 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <table class="table eim-areas table-sm">
                                     <thead>
                                         <tr>
-                                            <th scope="col" class="text-center eim-col-edit" title="Edit"><i class="fa-solid fa-pencil"></i></th>
-                                            <th scope="col" class="text-center eim-col-select" title="Select"><a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i></a></th>
-                                            <th scope="col" class="text-center eim-col-style" title="Style"><i class="fa-solid fa-palette"></i></th>
+                                            <th><!-- Drag handle --></th>
+                                            <th scope="col" class="text-center eim-col-edit" title="Edit">
+                                                <a data-action="reset-area" href="javascript:;"><i class="fa-solid fa-pencil"></i></a>
+                                            </th>
+                                            <th scope="col" class="text-center eim-col-select" title="Select">
+                                                <a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i></a>
+                                            </th>
+                                            <th scope="col" class="text-center eim-col-style" title="Style preview. Move the mouse over the preview to see the hover style; check a row to see the checked style."><i class="fa-solid fa-palette"></i></th>
                                             <th scope="col" class="eim-col-target">Target</th>
                                             <th scope="col" class="eim-col-actions">Action</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="area-list empty-on-close">
-                                    </tbody>
+                                    <tbody class="area-list empty-on-close"></tbody>
                                     <template data-eim-template="area-row">
-                                        <tr data-area-id class="area">
+                                        <tr data-area-id class="area" draggable="true">
+                                            <td class="drag-handle">
+                                                <div draggable="area">
+                                                    <i class="fa-solid fa-ellipsis-vertical" draggable="area"></i>
+                                                </div>
+                                            </td>
                                             <td class="text-center">
                                                 <input class="form-check-input" type="radio" name="active-area" value="" data-action="edit-area">
                                             </td>
