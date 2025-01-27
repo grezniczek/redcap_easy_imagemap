@@ -336,24 +336,24 @@ function handleSVGEvent(e) {
     // Only handle left mouse button
     if (e.button != 0 && editorData.mode != 'dragging') return;
     const pos = getMousePosition(e);
+    if (e.target == null) return;
     const type = e.type ?? ''
-    const target = e.target;
-    if (target == null) return;
+    const $target = $(e.target);
 
     // Select an area
-    if (editorData.mode == '' && type == 'pointerdown' && target.classList.contains('background')) {
-        const id = target.getAttribute('data-id');
+    if (editorData.mode == '' && type == 'pointerdown' && $target.hasClass('background')) {
+        const id = $target.attr('data-id');
         setCurrentArea(id);
         return;
     }
 
     // Toggle an area while in preview mode
-    if (editorData.mode == 'preview' && type == 'pointerdown' && target.classList.contains('background')) {
-        if (target.classList.contains('selected')) {
-            target.classList.remove('selected');
+    if (editorData.mode == 'preview' && type == 'pointerdown' && $target.hasClass('background')) {
+        if ($target.hasClass('selected')) {
+            $target.removeClass('selected');
         }
         else {
-            target.classList.add('selected');
+            $target.addClass('selected');
         }
         return;
     }
@@ -364,9 +364,9 @@ function handleSVGEvent(e) {
     // Start an dragging or moving process
     if (editorData.mode == '' && type == 'pointerdown') {
         // Check if over existing anchor
-        if (target.classList.contains('anchor')) {
+        if ($target.hasClass('anchor')) {
             // Set this anchor as the active one
-            currentAnchor = target;
+            currentAnchor = $target[0];
             activateAnchor(currentAnchor);
             // Start dragging an anchor
             setMode('dragging');
@@ -561,15 +561,15 @@ function executeEditorAction(action, $row) {
             editorData.areas[id].label = label;
         }
         break;
-        case 'clear-areas': {
-            editorData.areas = {};
-            $editor.find('tr.area').remove();
-            $svg.find('polygon.background').each(function() {
-                this.remove();
-            });
-            setCurrentArea(null);
-            showWhenNoAreas();
-        }
+        // case 'clear-areas': {
+        //     editorData.areas = {};
+        //     $editor.find('tr.area').remove();
+        //     $svg.find('polygon.background').each(function() {
+        //         this.remove();
+        //     });
+        //     setCurrentArea(null);
+        //     showWhenNoAreas();
+        // }
         break;
         case 'style-area': {
             const id = $row.attr('data-area-id');
@@ -694,6 +694,7 @@ function generateUUID() {
  * @param {boolean} isError
  */
 function showToast(msg, isError = false) {
+    // @ts-ignore
     const toastId = window.showToast("Easy Imagemap", msg, 'success', 1000);
     if (isError) {
         error($('#' + toastId).text());
