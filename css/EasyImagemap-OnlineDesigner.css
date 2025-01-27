@@ -68,16 +68,15 @@ svg.eim-svg {
     position: absolute;
     left: 0;
     top: 0;
-    cursor: crosshair;
+    cursor: not-allowed;
     outline: 1px orange dotted;
     outline-offset: -1px;
 }
-svg.eim-svg.inactive, 
-svg.eim-svg.preview {
-    cursor: not-allowed;
+svg.eim-svg:has(.editing) {
+    cursor: crosshair;
 }
 svg.eim-svg .anchor {
-    cursor: pointer;
+    cursor: default;
     stroke: var(--anchor-stroke-color);
     stroke-width: var(--stroke-width);
     fill: var(--anchor-fill-color);
@@ -86,6 +85,9 @@ svg.eim-svg .anchor {
 svg.eim-svg .anchor.active {
     stroke-width: calc(var(--stroke-width) * 2);
     fill: var(--anchor-active-fill-color);
+}
+svg.eim-svg .anchor.dragging {
+    opacity: 0;
 }
 svg.eim-svg polygon {
     stroke-width: 1;

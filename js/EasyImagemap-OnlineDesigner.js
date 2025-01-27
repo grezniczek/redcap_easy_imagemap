@@ -25,6 +25,7 @@ let poly = null;
 let assignableLabels = {};
 let zoom = 1;
 let editMode = 'edit';
+let shapeType = 'ellipse';
 let dndInitialized = false;
 
 
@@ -187,7 +188,7 @@ function editImageMap() {
         }
     }
     // Build SVG to overlay on image
-    $svg = $(`<svg tabindex="0" class="eim-svg inactive" style="height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg = $(`<svg tabindex="0" class="eim-svg" style="height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
     // Add image and SVG
     $container.append($img).append($svg);
     
@@ -207,7 +208,7 @@ function editImageMap() {
 
     // Add the rows
     for (let id of Object.keys(editorData.areas)) {
-        addTableRow(id, '', false);
+        addTableRow(id, '');
     }
     // UI updates
     showWhenNoAreas();
@@ -468,15 +469,25 @@ function clearAnchors() {
 
 //#region Tooltip
 
-function showTooltip(evt, id) {
-    if (['edit','move'].includes(editorData.mode) && evt.target.classList.contains('background') && !evt.target.classList.contains('editing')) {
-        const text = assignableLabels[editorData.areas[id].target] ?? '';
-        if (text && text != '') {
-            const $tooltip = $('#eim-editor-tooltip');
-            const left = evt.pageX + 15 + 'px';
-            const top = evt.pageY + 12 + 'px';
-            $tooltip.html(text).show().css('left', left).css('top', top);
-        }
+// function showTooltip(evt, id) {
+//     if (['edit','move'].includes(editorData.mode) && evt.target.classList.contains('background') && !evt.target.classList.contains('editing')) {
+//         const text = assignableLabels[editorData.areas[id].target] ?? '';
+//         if (text && text != '') {
+//             const $tooltip = $('#eim-editor-tooltip');
+//             const left = evt.pageX + 15 + 'px';
+//             const top = evt.pageY + 12 + 'px';
+//             $tooltip.html(text).show().css('left', left).css('top', top);
+//         }
+//     }
+// }
+
+function showTooltip(id, x, y) {
+    const text = assignableLabels[editorData.areas[id].target] ?? '';
+    if (text && text != '') {
+        const $tooltip = $('#eim-editor-tooltip');
+        const left = x + 15 + 'px';
+        const top = y + 12 + 'px';
+        $tooltip.html(text).show().css('left', left).css('top', top);
     }
 }
 
@@ -492,6 +503,23 @@ function hideTooltip() {
  * @param {PointerEvent} e 
  */
 function handleSVGEvent(e) {
+    if ((editorData.mode == 'edit' || editorData.mode == 'move') && e.type == 'pointermove') {
+        // Get all elements under the mouse position
+        const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
+        // Filter elements that are part of the <svg> and have the class "background"
+        const backgroundElements = elementsUnderMouse.filter(element => 
+            element.tagName.toLowerCase() !== 'svg' &&  // Exclude the <svg> element itself
+            $svg[0].contains(element) &&                // Ensure it belongs to the SVG
+            element.classList.contains('background') && // Check for the "background" class
+            !element.classList.contains('editing')      // Exclude elements with the "editing" class
+        );
+        if (backgroundElements.length == 1) {
+            showTooltip(backgroundElements[0].getAttribute('data-id'), e.pageX, e.pageY);
+        }
+        else {
+            hideTooltip();
+        }
+    }
     // Only handle left mouse button
     if (e.button != 0 && editorData.mode != 'drag-anchor') return;
     const pos = getMousePosition(e);
@@ -526,6 +554,7 @@ function handleSVGEvent(e) {
         if ($target.hasClass('anchor')) {
             // Set this anchor as the active one
             currentAnchor = $target[0];
+            $target.addClass('dragging');
             activateAnchor(currentAnchor);
             // Start dragging an anchor
             setMode('drag-anchor');
@@ -568,6 +597,7 @@ function handleSVGEvent(e) {
             // Inside - make this anchor the 'active' one
             activateAnchor(currentAnchor);
         }
+        $svg.find('.anchor.dragging').removeClass('dragging');
         setMode('edit');
         svg.releasePointerCapture(e.pointerId);
         updatePolygon();
@@ -581,8 +611,15 @@ function showWhenNoAreas() {
 }
 
 
-function addBackgroundPoly(id, editing = false) {
+/**
+ * Adds or updates a background shape for an area
+ * @param {string} id 
+ * @param {boolean} editing 
+ */
+function setBackgroundShape(id, editing = false) {
     const area = editorData.areas[id];
+    
+
     // Add a polygon for this area
     const $bgPoly = $svg.find('polygon[data-id="' + id + '"]')
     if ($bgPoly.length == 1) {
@@ -596,22 +633,23 @@ function addBackgroundPoly(id, editing = false) {
             'data-id': id,
         });
         bgPoly.classList[editing ? 'add' : 'remove']('editing');
-        bgPoly.addEventListener('pointerout', hideTooltip);
-        bgPoly.addEventListener('pointermove', function(e) { showTooltip(e, id); });
+        // bgPoly.addEventListener('pointerout', hideTooltip);
+        // bgPoly.addEventListener('pointermove', function(e) { showTooltip(e, id); });
         svg.prepend(bgPoly);
     }
 }
 
 function setCurrentArea(id) {
+    hideTooltip();
     if (currentArea == id) return;
     if (currentArea) {
         storePolygon(currentArea);
         $svg.find('polygon.background').each(function() {
             if (this.getAttribute('data-id') == id) {
-                this.classList.add('active');
+                this.classList.add('editing');
             }
             else {
-                this.classList.remove('active');
+                this.classList.remove('editing');
             }
         });
         clearAnchors();
@@ -620,19 +658,20 @@ function setCurrentArea(id) {
     currentArea = id;
     if (currentArea == null) return;
 
-    let area = null;
-    // Ensure to reset the mode
+    const area = editorData.areas[currentArea];
+    // Set edit mode and update shape
     setMode('edit');
+    setShapeType(area.type);
+    // Update table
     $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', true);
-    $svg.removeClass('inactive');
+
     if (!editorData.areas) {
         editorData.areas = {};
     }
     if (!editorData.areas[currentArea]) {
         editorData.areas[currentArea] = {};
     }
-    area = editorData.areas[currentArea];
-    addBackgroundPoly(currentArea, true);
+    setBackgroundShape(currentArea, true);
     clearAnchors();
     // Add new anchors
     try {
@@ -681,14 +720,51 @@ function toggleSelectAll() {
     }
 }
 
-function addTableRow(id, afterId = '', clone = false) {
+function setShapeType(type) {
+    if (type == shapeType) return;
+    shapeType = type;
+    log('Shape type set to: ' + shapeType);
+    ['ellipse', 'rectangle', 'polygon'].forEach(t => {
+        if (t == shapeType) {
+            $('button[data-action="type-' + t + '"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
+        }
+        else {
+            $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
+        }
+    });
+}
+
+function addNewArea() {
+    const uuid = generateUUID();
+    editorData.areas[uuid] = {
+        type: shapeType,
+        label: '',
+        target: '',
+        points: ''
+    };
+    return uuid;
+}
+
+function cloneArea(origId) {
+    const uuid = generateUUID();
+    const orig = editorData.areas[origId];
+    editorData.areas[uuid] = {
+        type: orig.type,
+        label: '',
+        target: '',
+        points: orig.points
+    };
+    return uuid;
+}
+
+function addTableRow(id, afterId = '') {
     const $row = getTemplate('area-row');
     $row.attr('data-area-id', id);
     const $select = $row.find('select');
     $select.html($selectTemplate.html());
     $select.val(editorData.areas[id].target ?? '') ;
     // @ts-ignore
-    $select.selectpicker() //.select2();
+    $select.selectpicker();
     if (afterId == '') {
         $editor.find('tbody.area-list').append($row);
     }
@@ -696,7 +772,7 @@ function addTableRow(id, afterId = '', clone = false) {
         $editor.find('tr[data-area-id="' + afterId + '"]').after($row);
     }
     // Add background shape
-    addBackgroundPoly(id);
+    setBackgroundShape(id);
 }
 
 function showPreview() {
@@ -785,18 +861,16 @@ function executeEditorAction(action, $row) {
         break;
         case 'add-area': {
             const id = $row.attr('data-area-id') ?? '';
-            const uuid = generateUUID();
-            editorData.areas[uuid] = {};
-            addTableRow(uuid, id, false);
+            const uuid = addNewArea();
+            addTableRow(uuid, id);
             showWhenNoAreas();
             setCurrentArea(uuid);
         }
         break;
         case 'duplicate-area': {
             const id = $row.attr('data-area-id') ?? '';
-            const uuid = generateUUID();
-            editorData.areas[uuid] = {};
-            addTableRow(uuid, id, true);
+            const uuid = cloneArea(id);
+            addTableRow(uuid, id);
             showWhenNoAreas();
             setCurrentArea(uuid);
         }
