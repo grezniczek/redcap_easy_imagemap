@@ -1,4 +1,4 @@
-.easy-imagemap-editor {
+.eim-editor {
     --stroke-width: 1;
     --anchor-fill-color: yellow;
     --anchor-active-fill-color: red;
@@ -8,32 +8,42 @@
     --shape-opacity: 0.2;
     --shape-active-opacity: 0.3;
 }
-.easy-imagemap-editor .modal-header {
+.eim-editor .modal-header {
     padding: 0.5rem 1rem;
     font-size: 20px;
     display: block;
 }
-.easy-imagemap-editor .modal-header .eim-icon {
+.eim-editor .modal-header .eim-icon {
     font-size: 16px;
 }
 .eim-icon {
     color: orange;
 }
-.easy-imagemap-editor .modal-body {
+.eim-editor .modal-body {
     padding: 0.5rem 1rem;
+    display: flex;
+    gap: 15px;
 }
-.easy-imagemap-editor p {
-    margin-top: 0;
+.eim-editor .area-assignments {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
-.easy-imagemap-editor .area-style-sample {
+.eim-editor .area-assignments-table {
+    max-width: 445px;
+    margin: 10px 0;
+    padding-right: 5px;
+    overflow-y: scroll;
+    flex-grow: 1;
+}
+.eim-editor .area-style-sample {
     display: inline-block;
-    width: 4rem;
-    height: 1.9rem;
-    background-color: aqua;
-    position: absolute;
-    margin-left: 10px;
+    vertical-align: text-bottom;
+    width: 20px;
+    height: 20px;
+    background-color: rgb(180, 180, 180);
 }
-.easy-imagemap-editor .field-name {
+.eim-editor .field-name {
     font-weight: bold;
 }
 tr.area td {
@@ -107,7 +117,7 @@ svg.eim-svg.preview polygon.background.selected {
 svg.eim-svg.preview polygon.background:not(.selected):hover {
     opacity: 0.1;
 }
-#easy-imagemap-editor-tooltip {
+#eim-editor-tooltip {
     background: cornsilk;
     border: 1px solid black;
     border-radius: 5px;
@@ -120,22 +130,24 @@ svg.eim-svg.preview polygon.background:not(.selected):hover {
     height: 12px;
     margin-right: 3px;
 }
-.modal-body.draw {
-    position: relative;
-    max-height: 55%;
-    max-width: 100%;
-    overflow: auto;
-    padding: 5px 15px;
-
-}
 #eim-container {
+    flex-grow: 1;
     position: relative;
-    min-height: fit-content;
+    overflow: auto;
     padding: 0;
 }
-.modal-body.buttons {
-    min-height: 114px;
+table.eim-areas td {
+    vertical-align: middle;
 }
-.modal-body.assign {
-    max-height: 40%;
+table.eim-areas th.eim-col-actions {
+    min-width: 85px;
+    font-weight: normal;
+}
+table.eim-areas th.eim-col-edit,
+table.eim-areas th.eim-col-select,
+table.eim-areas th.eim-col-style {
+    min-width: 25px;
+}
+table.eim-areas th.eim-col-target {
+    padding-left: 14px;
 }

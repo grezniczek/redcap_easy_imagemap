@@ -48,7 +48,7 @@ function initialize(config_data, jsmo_obj) {
             updateFields();
         }
         // Setup editor and events
-        $editor = $('.modal.easy-imagemap-editor');
+        $editor = $('.modal.eim-editor');
         $editor.find('[data-action]').on('click', handleEditorActionEvent);
 
         // Add buttons
@@ -175,7 +175,7 @@ function zoomTo(f) {
     $img.css('width', zW + 'px').css('height', zH + 'px')
     $img.css('max-width', zW + 'px').css('max-height', zH + 'px')
     // @ts-ignore
-    document.querySelector('.easy-imagemap-editor').style.setProperty('--stroke-width', 1/f);
+    document.querySelector('.eim-editor').style.setProperty('--stroke-width', 1/f);
     // Redraw anchors
     const current = currentArea;
     setCurrentArea(null);
@@ -312,7 +312,7 @@ function showTooltip(evt, id) {
     if (editorData.mode == '' && evt.target.classList.contains('background')) {
         const text = assignableLabels[editorData.areas[id].target] ?? '';
         if (text && text != '') {
-            const $tooltip = $('#easy-imagemap-editor-tooltip');
+            const $tooltip = $('#eim-editor-tooltip');
             const left = evt.pageX + 15 + 'px';
             const top = evt.pageY + 12 + 'px';
             $tooltip.html(text).show().css('left', left).css('top', top);
@@ -321,7 +321,7 @@ function showTooltip(evt, id) {
 }
 
 function hideTooltip() {
-    const $tooltip = $('#easy-imagemap-editor-tooltip');
+    const $tooltip = $('#eim-editor-tooltip');
     $tooltip.hide().html('');
 }
 

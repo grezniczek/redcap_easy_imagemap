@@ -202,133 +202,156 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         <?php
         #region Editor Modal
         ?>
-        <div id="easy-imagemap-editor-tooltip" style="position:absolute;display:none;"></div>
-        <div class="easy-imagemap-editor modal" tabindex="-1" role="dialog" aria-labelledby="easy-imagemap-editor-title" aria-hidden="true">
+        <div id="eim-editor-tooltip" style="position:absolute;display:none;"></div>
+        <div class="eim-editor modal" tabindex="-1" role="dialog" aria-labelledby="eim-editor-title" aria-hidden="true">
             <div class="modal-dialog modal-fullscreen modal-dialog-centered" role="document">
                 <div class="modal-content">
                     <div class="modal-header">
                         <div class="eim-editor-title mb-1">
                             <i class="fa-solid fa-draw-polygon eim-icon me-1"></i>
-                            <span id="easy-imagemap-editor-title">
+                            <span id="eim-editor-title">
                                 <b>Easy Imagemap</b> &ndash; Editing field:
                                 <span class="field-name"></span>
                             </span>
                         </div>
                         <div class="btn-toolbar mt-2" role="toolbar" aria-label="Main toolbar">
                             <div class="btn-group btn-group-sm me-1" role="group" aria-label="Preview controls">
-                                <button type="button" data-action="preview" class="btn btn-outline-primary"><i class="fa-solid fa-eye"></i> Preview</button>
+                                <button type="button" data-action="preview" class="btn btn-outline-primary">
+                                    <i class="fa-solid fa-eye"></i> Preview
+                                </button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Magnification controls">
-                                <button type="button" class="btn btn-outline-secondary" disabled><i class="fa-solid fa-search"></i></button>
-                                <button type="button" data-action="zoom1x" class="btn btn-secondary zoombutton-active">1x</button>
-                                <button type="button" data-action="zoom2x" class="btn btn-outline-secondary">2x</button>
-                                <button type="button" data-action="zoom3x" class="btn btn-outline-secondary">3x</button>
-                                <button type="button" data-action="zoom4x" class="btn btn-outline-secondary">4x</button>
+                                <button type="button" class="btn btn-outline-secondary" disabled>
+                                    <i class="fa-solid fa-search"></i>
+                                </button>
+                                <button type="button" data-action="zoom1x" class="btn btn-secondary zoombutton-active" title="Set zoom to 100%">
+                                    1x
+                                </button>
+                                <button type="button" data-action="zoom2x" class="btn btn-outline-secondary" title="Set zoom to 200%">
+                                    2x
+                                </button>
+                                <button type="button" data-action="zoom3x" class="btn btn-outline-secondary" title="Set zoom to 300%">
+                                    3x
+                                </button>
+                                <button type="button" data-action="zoom4x" class="btn btn-outline-secondary" title="Set zoom to 400%">
+                                    4x
+                                </button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Edit mode">
-                                <button type="button" class="btn btn-outline-secondary text-dark" disabled>Mode</button>
-                                <button type="button" data-action="mode-edit" class="btn btn-secondary"><i class="fa-solid fa-pen-nib"></i></button>
-                                <button type="button" data-action="mode-move" class="btn btn-outline-secondary"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+                                <button type="button" class="btn btn-outline-secondary text-dark" disabled>
+                                    Mode
+                                </button>
+                                <button type="button" data-action="mode-edit" class="btn btn-secondary" title="Edit shapes">
+                                    <i class="fa-solid fa-pen-nib"></i>
+                                </button>
+                                <button type="button" data-action="mode-move" class="btn btn-outline-secondary" title="Move shapes">
+                                    <i class="fa-solid fa-arrows-up-down-left-right"></i>
+                                </button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Shape type">
-                                <button type="button" class="btn btn-outline-secondary text-dark" disabled>Shape</button>
-                                <button type="button" data-action="type-ellipse" class="btn btn-secondary"><i class="fa-regular fa-circle"></i></button>
-                                <button type="button" data-action="type-rectangle" class="btn btn-outline-secondary"><i class="fa-regular fa-square"></i></button>
-                                <button type="button" data-action="type-polygon" class="btn btn-outline-secondary"><i class="fa-solid fa-draw-polygon"></i></button>
+                                <button type="button" class="btn btn-outline-secondary text-dark" disabled>
+                                    Shape
+                                </button>
+                                <button type="button" data-action="type-ellipse" class="btn btn-secondary" title="Set shape to ellipse">
+                                    <i class="fa-regular fa-circle"></i>
+                                </button>
+                                <button type="button" data-action="type-rectangle" class="btn btn-outline-secondary" title="Set shape to rectangle">
+                                    <i class="fa-regular fa-square"></i>
+                                </button>
+                                <button type="button" data-action="type-polygon" class="btn btn-outline-secondary" title="Set shape to polygon">
+                                    <i class="fa-solid fa-draw-polygon"></i>
+                                </button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Styling">
                                 <button class="btn btn-outline-primary text-dark" disabled>Style</button>
-                                <button data-action="style-regular" class="btn btn-outline-primary"><i class="fa-regular fa-square"></i></button>
-                                <button data-action="style-hover" class="btn btn-outline-primary"><i class="fa-solid fa-arrow-pointer"></i></button>
-                                <button data-action="style-selected" class="btn btn-outline-primary"><i class="fa-solid fa-square-check"></i></button>
-                                <button data-action="style-apply-to-selected" class="btn btn-outline-primary"><i class="fa-solid fa-right-to-bracket"></i></button>
+                                <button data-action="style-regular" class="btn btn-outline-primary" title="Set regular style">
+                                    <i class="fa-regular fa-square"></i>
+                                </button>
+                                <button data-action="style-hover" class="btn btn-outline-primary" title="Set style on hover">
+                                    <i class="fa-solid fa-arrow-pointer"></i>
+                                </button>
+                                <button data-action="style-selected" class="btn btn-outline-primary" title="Set style on selection">
+                                    <i class="fa-solid fa-square-check"></i>
+                                </button>
+                                <button data-action="style-apply-to-selected" class="btn btn-outline-primary" title="Apply to selected targets">
+                                    <i class="fa-regular fa-pen-to-square"></i>
+                                </button>
+                            </div>
+                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Update mode">
+                                <button class="btn btn-outline-primary text-dark" disabled>Update</button>
+                                <button data-action="mode-two-way" class="btn btn-outline-primary" title="Two-way update">
+                                    <i class="fa-solid fa-exchange-alt"></i>
+                                </button>
+                                <button data-action="mode-to-target" class="btn btn-outline-primary" title="One-way update to target">
+                                    <i class="fa-solid fa-right-to-bracket"></i>
+                                </button>
+                                <button data-action="mode-from-target" class="btn btn-outline-primary" title="One-way update from target">
+                                    <i class="fa-solid fa-right-from-bracket fa-rotate-180"></i>
+                                </button>
+                                <button data-action="mode-apply-to-selected" class="btn btn-outline-primary" title="Apply to selected targets">
+                                    <i class="fa-regular fa-pen-to-square"></i>
+                                </button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Settings">
-                                <button data-action="change-settings" class="btn btn-outline-secondary"><i class="fa-solid fa-cog"></i></button>
+                                <button data-action="change-settings" class="btn btn-outline-secondary" title="Edit settings">
+                                    <i class="fa-solid fa-cog"></i>
+                                </button>
                             </div>
                         </div>
                     </div>
-                    <div class="modal-body draw">
+                    <div class="modal-body">
+                        <div class="area-assignments">
+                            <div class="area-assignments-intro">
+                                Add or edit areas, then assign them to a target (field or choice).
+                            </div>
+                            <div class="area-assignments-table">
+                                <table class="table eim-areas table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col" class="text-center eim-col-edit" title="Edit"><i class="fa-solid fa-pencil"></i></th>
+                                            <th scope="col" class="text-center eim-col-select" title="Select"><a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i></a></th>
+                                            <th scope="col" class="text-center eim-col-style" title="Style"><i class="fa-solid fa-palette"></i></th>
+                                            <th scope="col" class="eim-col-target">Target</th>
+                                            <th scope="col" class="eim-col-actions">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="area-list empty-on-close">
+                                    </tbody>
+                                    <template data-eim-template="area-row">
+                                        <tr data-area-id class="area">
+                                            <td class="text-center">
+                                                <input class="form-check-input" type="radio" name="active-area" value="" data-action="edit-area">
+                                            </td>
+                                            <td class="text-center">
+                                                <input class="form-check-input" type="checkbox" name="checked-area" value="" data-action="select-area">
+                                            </td>
+                                            <td class="text-center">
+                                                <div class="area-style-sample"></div>
+                                            </td>
+                                            <td>
+                                                <div class="form-inline" data-action="assign-target">
+                                                    <select data-live-search="true" class="form-control form-control-sm assignables" data-width="100%">
+                                                        <!-- Assignable field options -->
+                                                    </select>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <button data-action="add-area" class="btn btn-default btn-xs"><i class="fa-solid fa-add"></i></button>
+                                                <button data-action="duplicate-area" class="btn btn-default btn-xs"><i class="fa-solid fa-clone"></i></button>
+                                                <button data-action="remove-area" class="btn btn-default btn-xs"><i class="fa-solid fa-trash-can text-danger"></i></button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </table>
+                                <p class="show-when-no-areas"><i>No areas have been defined yet.</i>
+                                    <button data-action="add-area" class="btn btn-success btn-xs"><i class="fa-solid fa-add"></i></button>
+                                </p>
+                            </div>
+                        </div>
                         <div id="eim-container" class="empty-on-close"></div>
                     </div>
-                    <div class="modal-body buttons">
-                        <div>
-
-                            |
-                            <div class="form-check form-check-inline">
-                                <label class="form-check-label" for="eim-two-way">Two way updates:</label>
-                                <input class="form-check-input ml-2" type="checkbox" id="eim-two-way" name="two-way" style="margin-top:0.2rem;" value="">
-                            </div>
-                            <div class="form-check form-check-inline ml-3">
-                                <i class="fa-solid fa-palette"></i>&nbsp;Style:
-                            </div>
-                        </div>
-                        <div class="mt-1">
-                            <button data-action="style-regular" class="btn btn-light btn-sm">Regular:</button>
-                            <div class="eim-style-button" id="eim-style-regular"></div>
-                            <button data-action="style-hover" class="btn btn-light btn-sm">Hover:</button>
-                            <div class="eim-style-button" id="eim-style-hover"></div>
-                            <button data-action="style-selected" class="btn btn-light btn-sm">Selected:</button>
-                            <div class="eim-style-button" id="eim-style-selected"></div>
-                            <span class="ml-1">&mdash;</span>
-                            <button data-action="style-apply" class="btn btn-default btn-sm">Apply to selected areas</button>
-                        </div>
-                        <div class="mt-2">
-                            Add or edit areas, then assign them to checkbox or radio field options.
-                        </div>
-                    </div>
-                    <div class="modal-body assign">
-                        <table class="table table-sm">
-                            <thead>
-                                <tr>
-                                    <th scope="col"><i class="fa-solid fa-pencil"></i> Edit</th>
-                                    <th scope="col"><a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i> Select</a></th>
-                                    <th scope="col">
-                                        <i class="fa-solid fa-exchange-alt"></i> Field
-                                    </th>
-                                    <th scope="col"><i class="fa-solid fa-palette"></i> Style</th>
-                                    <th scope="col"><i class="fa-solid fa-bolt"></i> Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="area-list empty-on-close">
-                            </tbody>
-                            <template data-eim-template="area-row">
-                                <tr data-area-id class="area" data-action="edit-area">
-                                    <td>
-                                        <div class="form-check form-check-inline">
-                                            <input class="form-check-input ml-2" type="radio" name="active-area" value="">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div data-action="select-area" class="form-check form-check-inline">
-                                            <input class="form-check-input ml-2" type="checkbox" value="">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="form-inline" data-action="assign-target">
-                                            <select data-live-search="true" class="form-control form-control-sm assignables" data-width="90%">
-                                                <!-- Assignable field options -->
-                                            </select>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <button data-action="style-area" class="btn btn-default btn-sm">Style area</button>
-                                        <div data-action="none" class="area-style-sample"></div>
-                                    </td>
-                                    <td>
-                                        <button data-action="add-area" class="btn btn-default btn-xs"><i class="fa-solid fa-add"></i></button>
-                                        <button data-action="duplicate-area" class="btn btn-default btn-xs"><i class="fa-solid fa-clone"></i></button>
-                                        <button data-action="remove-area" class="btn btn-default btn-xs"><i class="fa-solid fa-trash-can text-danger"></i></button>
-                                    </td>
-                                </tr>
-                            </template>
-                        </table>
-                        <p class="show-when-no-areas"><i>No areas have been defined yet.</i>
-                            <button data-action="add-area" class="btn btn-success btn-xs"><i class="fa-solid fa-add"></i></button>
-                        </p>
-                    </div>
                     <div class="modal-footer">
-                        <button data-action="clear-areas" class="btn btn-link btn-xs text-danger" style="margin-right:auto;"><i class="fa-regular fa-trash-alt"></i> Reset (remove all areas)</button>
+                        <button data-action="remove-selected-areas" class="btn btn-xs text-danger" style="margin-right:auto;"><i class="fa-regular fa-trash-alt"></i> Remove selected areas</button>
                         <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel 
                                                                                                     ?></button>
                         <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fa-solid fa-save"></i> &nbsp; <?= RCView::tt("report_builder_28") // Save Changes 
