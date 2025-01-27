@@ -25,7 +25,7 @@ let poly = null;
 let assignableLabels = {};
 let zoom = 1;
 let editMode = 'edit';
-let shapeType = 'ellipse';
+let shapeType = 'poly';
 let dndInitialized = false;
 
 
@@ -204,7 +204,7 @@ function editImageMap() {
     svg.appendChild(poly);
     setMode('edit');
     editorData.anchors = new Array();
-    editorData.areas = areasFromMap(editorData.map);
+    editorData.areas = areasFromMaps(editorData.map);
 
     // Add the rows
     for (let id of Object.keys(editorData.areas)) {
@@ -295,33 +295,52 @@ function zoomTo(f) {
 }
 
 //#endregion
-
-function areasFromMap(map) {
+/**
+ * Creates area objects from the map
+ * @param {Array} maps 
+ * @returns 
+ */
+function areasFromMaps(maps) {
     const areas = {};
-    for (let i of Object.keys(map)) {
-        const area = map[i];
-        const id = generateUUID();
-        areas[id] = area;
+    for (let map of maps) {
+        let type = 'poly';
+        if (typeof map.poly != 'undefined') {
+            type = 'poly';
+        } else if (typeof map.rect != 'undefined') {
+            type = 'rect';
+        } else if (typeof map.ell != 'undefined') {
+            type = 'ell';
+        }
+        const mode = ['2-way', 'to-target', 'from-target'].includes(map.mode) ? map.mode : '2-way';
+        areas[generateUUID()] = {
+            type: type,
+            mode: mode,
+            label: map.label ?? '',
+            target: map.target ?? '',
+            data: map[type] ?? '',
+        };
     }
     return areas;
 }
 
-function areasToMap() {
-    const map = {};
+function areasToMaps() {
+    const maps = [];
     let areaIdx = 1;
     const $rows = $editor.find('tr[data-area-id]');
     for (let i = 0; i < $rows.length; i++) {
         const id = $rows.get(i)?.dataset.areaId ?? '';
-        const area = editorData.areas[id] ?? {};
+        const area = editorData.areas[id] ?? { type: 'poly' };
         log('Adding area ' + id + ' at position ' + areaIdx, area);
-        map[areaIdx] = {
-            points: area.points ?? '',
-            target: area.target ?? '',
-            label: getOptionLabel(id, area.target),
+        const map = {
+            label: area.label,
+            mode: area.mode,
+            target: area.target,
         };
+        map[area.type] = area.data;
+        maps.push(map);
         areaIdx++;
     }
-    return map;
+    return maps;
 }
 
 function getOptionLabel(id, code) {
@@ -623,12 +642,12 @@ function setBackgroundShape(id, editing = false) {
     // Add a polygon for this area
     const $bgPoly = $svg.find('polygon[data-id="' + id + '"]')
     if ($bgPoly.length == 1) {
-        $bgPoly[0].setAttributeNS(null, 'points', area.points ?? '');
+        $bgPoly[0].setAttributeNS(null, 'points', area.data ?? '');
         $bgPoly[0].classList[editing ? 'add' : 'remove']('editing');
     }
     else {
         const bgPoly = createSVG('polygon', { 
-            points: area.points ?? '',
+            points: area.data ?? '',
             'class': 'background',
             'data-id': id,
         });
@@ -675,8 +694,8 @@ function setCurrentArea(id) {
     clearAnchors();
     // Add new anchors
     try {
-        if (typeof area.points == 'string' && area.points != '') {
-            for (let coords of area.points.split(' ')) {
+        if (typeof area.data == 'string' && area.data != '') {
+            for (let coords of area.data.split(' ')) {
                 const pos = coords.split(',');
                 const x = Number.parseInt(pos[0]);
                 const y = Number.parseInt(pos[1]);
@@ -721,15 +740,12 @@ function toggleSelectAll() {
 }
 
 function setShapeType(type) {
-    if (type == shapeType) return;
     shapeType = type;
     log('Shape type set to: ' + shapeType);
-    ['ellipse', 'rectangle', 'polygon'].forEach(t => {
+    ['ell', 'rect', 'poly'].forEach(t => {
+        $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         if (t == shapeType) {
             $('button[data-action="type-' + t + '"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
-        }
-        else {
-            $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         }
     });
 }
@@ -738,9 +754,10 @@ function addNewArea() {
     const uuid = generateUUID();
     editorData.areas[uuid] = {
         type: shapeType,
+        mode: '2-way',
         label: '',
         target: '',
-        points: ''
+        data: ''
     };
     return uuid;
 }
@@ -750,9 +767,10 @@ function cloneArea(origId) {
     const orig = editorData.areas[origId];
     editorData.areas[uuid] = {
         type: orig.type,
+        mode: orig.mode,
         label: '',
         target: '',
-        points: orig.points
+        data: orig.data
     };
     return uuid;
 }
@@ -822,8 +840,6 @@ function executeEditorAction(action, $row) {
             const id = $row.attr('data-area-id');
             const code = $row.find('select').val();
             editorData.areas[id].target = code;
-            const label = $row.find('select option[value="' + code + '"]').attr('data-content');
-            editorData.areas[id].label = label;
         }
         break;
         case 'style-area': {
@@ -913,7 +929,7 @@ function executeEditorAction(action, $row) {
                 formName: editorData.formName,
                 bounds: editorData.bounds,
                 'two-way': $editor.find('input[name=two-way]').prop('checked'),
-                map: areasToMap(),
+                map: areasToMaps(),
             }
             JSMO.ajax('save-map', data).then(function() {
                 showToast('Map data was successfully saved.');

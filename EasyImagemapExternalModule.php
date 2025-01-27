@@ -121,7 +121,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $mf_meta = $this->get_field_info($map_field_name);
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
-                list($target_field, $code) = explode("::", $map["target"], 2);
+                list($target_field, $code) = explode(":", $map["target"], 2);
                 $target_field_info = $this->get_field_metadata($target_field);
                 $target_type = $target_field_info["element_type"];
                 $target_enum = parseEnum($target_field_info["element_enum"]);
@@ -252,13 +252,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <button type="button" class="btn btn-outline-secondary text-dark" disabled>
                                     Shape
                                 </button>
-                                <button type="button" data-action="type-ellipse" class="btn btn-secondary" title="Set shape to ellipse">
+                                <button type="button" data-action="type-ell" class="btn btn-secondary" title="Set shape to ellipse">
                                     <i class="fa-regular fa-circle"></i>
                                 </button>
-                                <button type="button" data-action="type-rectangle" class="btn btn-outline-secondary" title="Set shape to rectangle">
+                                <button type="button" data-action="type-rect" class="btn btn-outline-secondary" title="Set shape to rectangle">
                                     <i class="fa-regular fa-square"></i>
                                 </button>
-                                <button type="button" data-action="type-polygon" class="btn btn-outline-secondary" title="Set shape to polygon">
+                                <button type="button" data-action="type-poly" class="btn btn-outline-secondary" title="Set shape to polygon">
                                     <i class="fa-solid fa-draw-polygon"></i>
                                 </button>
                             </div>
@@ -422,13 +422,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     $options = [];
                     if ($this_type != "checkbox") {
                         $options[] = array(
-                            "code" => "{$this_field_name}::",
+                            "code" => "{$this_field_name}:",
                             "label" => "(empty/reset)",
                         );
                     }
                     foreach ($enum as $code => $label) {
                         $options[] = array(
-                            "code" => "{$this_field_name}::{$code}",
+                            "code" => "{$this_field_name}:{$code}",
                             "label" => $label,
                         );
                     }
@@ -442,21 +442,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
         }
-        $bounds = [
-            "width" => $params["_w"] ?? 0,
-            "height" => $params["_h"] ?? 0,
-        ];
-        $twoway = $params["_two-way"] ?? false;
-        unset($params["_w"]);
-        unset($params["_h"]);
-        unset($params["_two-way"]);
         return [
             "fieldName" => $field_name,
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
             "map" => empty($params) ? [] : $params,
-            "bounds" => $bounds,
-            "two-way" => $twoway,
             "assignables" => $assignables,
         ];
     }
@@ -480,10 +470,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             if (
                 $field_meta["element_type"] == "descriptive" &&
                 $field_meta["edoc_id"] &&
-                $field_meta["edoc_display_img"] == "1" &&
-                array_pop(ActionTagHelper::parseActionTags($field_meta["misc"], self::ACTIONTAG)) !== null
-            ) {
-                $fields[$field_name] = Files::docIdHash($field_meta["edoc_id"], $this->get_salt());
+                $field_meta["edoc_display_img"] == "1") {
+                $tags = ActionTagHelper::parseActionTags($field_meta["misc"], self::ACTIONTAG);
+                if (is_array($tags) && count($tags)) {
+                    $fields[$field_name] = Files::docIdHash($field_meta["edoc_id"], $this->get_salt());
+                }
             }
         }
         return $fields;
@@ -508,9 +499,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $field_data = $this->get_field_metadata($field_name);
         $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
         $search = $at["match"];
-        $map["_w"] = $data["bounds"]["width"];
-        $map["_h"] = $data["bounds"]["height"];
-        $map["_two-way"] = $data["two-way"];
         $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"] . "=" . $json;
         $misc = trim(str_replace($search, $replace, $field_data["misc"]));
