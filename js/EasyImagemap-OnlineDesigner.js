@@ -645,7 +645,7 @@ function toggleSelectAll() {
     }
 }
 
-function addTableRow(id) {
+function addTableRow(id, afterId = '') {
     const $row = getTemplate('area-row');
     $row.attr('data-area-id', id);
     const $select = $row.find('select');
@@ -654,7 +654,12 @@ function addTableRow(id) {
     // @ts-ignore
     $select.selectpicker() //.select2();
     $row.on('click', handleEditorActionEvent);
-    $editor.find('tbody.area-list').append($row);
+    if (afterId == '') {
+        $editor.find('tbody.area-list').append($row);
+    }
+    else {
+        $editor.find('tr[data-area-id="' + afterId + '"]').after($row);
+    }
 }
 
 function showPreview() {
@@ -724,15 +729,17 @@ function executeEditorAction(action, $row) {
             setCurrentArea(null);
             $('[data-action="reset-area"]')[0].blur();
         break;
+        //#region Area Actions
         case 'edit-area': {
             const id = $row.attr('data-area-id');
             setCurrentArea(id);
         }
         break;
         case 'add-area': {
+            const id = $row.attr('data-area-id') ?? '';
             const uuid = generateUUID();
             editorData.areas[uuid] = {};
-            addTableRow(uuid);
+            addTableRow(uuid, id);
             setCurrentArea(uuid);
             showWhenNoAreas();
         }
@@ -752,6 +759,8 @@ function executeEditorAction(action, $row) {
             }
         }
         break;
+        //#endregion
+        //#region Exit Editor
         case 'cancel': {
             // Reset
             applyZoom('zoom1x');
@@ -784,6 +793,7 @@ function executeEditorAction(action, $row) {
             });
         }
         break;
+        //#endregion
     }
 }
 
