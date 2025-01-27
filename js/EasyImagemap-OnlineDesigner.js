@@ -297,18 +297,19 @@ function areasFromMap(map) {
 }
 
 function areasToMap() {
-    const ids = Object.keys(editorData.areas);
     const map = {};
-    let i = 1;
-    for (let id of ids) {
-        const area = editorData.areas[id];
-        log(area);
-        map[i] = {
+    let areaIdx = 1;
+    const $rows = $editor.find('tr[data-area-id]');
+    for (let i = 0; i < $rows.length; i++) {
+        const id = $rows.get(i)?.dataset.areaId ?? '';
+        const area = editorData.areas[id] ?? {};
+        log('Adding area ' + id + ' at position ' + areaIdx, area);
+        map[areaIdx] = {
             points: area.points ?? '',
             target: area.target ?? '',
             label: getOptionLabel(id, area.target),
         };
-        i++;
+        areaIdx++;
     }
     return map;
 }
@@ -384,11 +385,6 @@ function setMode(mode) {
     log('Mode updated to: ' + mode);
 }
 
-function setEditMode(mode) {
-    editMode = mode;
-
-    log('Edit mode updated to: ' + editMode);
-}
 
 
 function handleKeyEvent(e) {
@@ -558,7 +554,7 @@ function setCurrentArea(id) {
             else {
                 this.classList.remove('active');
             }
-        })
+        });
     }
     if (id == null) {
         if (currentArea) {
