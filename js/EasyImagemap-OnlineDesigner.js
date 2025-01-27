@@ -10,19 +10,19 @@ const EIM = window.DE_RUB_EasyImagemap ?? {
 // @ts-ignore
 window.DE_RUB_EasyImagemap = EIM;
 
-var config = {};
-var $editor = $();
-var $svg = null;
-var $img = null;
-var svg = null;
-var $selectTemplate = $();
-var showingEditor = false;
-var JSMO = {};
-var editorData = null;
-var currentArea = null;
-var currentAnchor = null;
-var poly = null;
-var assignableLabels = {};
+let config = {};
+let $editor = $();
+let $svg = null;
+let $img = null;
+let svg = null;
+let $selectTemplate = $();
+let showingEditor = false;
+let JSMO = {};
+let editorData = null;
+let currentArea = null;
+let currentAnchor = null;
+let poly = null;
+let assignableLabels = {};
 let zoom = 1;
 
 
@@ -156,11 +156,11 @@ function applyZoom(setToZoom) {
     ['zoom1x','zoom2x','zoom3x','zoom4x'].forEach((zoom) => {
         const btn = document.querySelector('button[data-action="' + zoom + '"]');
         if (btn) {
-            btn.classList.remove('zoombutton-active')
-            btn.classList.remove('btn-dark')
+            btn.classList.remove('btn-secondary');
+            btn.classList.add('btn-outline-secondary');
             if (zoom == setToZoom) {
-                btn.classList.add('zoombutton-active')
-                btn.classList.add('btn-dark')
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-secondary');
                 zoomTo(Number.parseInt(zoom.substring(4,5)));
             }
             // @ts-ignore
