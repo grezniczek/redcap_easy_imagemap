@@ -1,0 +1,176 @@
+.eim-editor {
+    --stroke-width: 1;
+    --anchor-fill-color: yellow;
+    --anchor-active-fill-color: red;
+    --anchor-stroke-color: black;
+    --shape-color: blue;
+    --shape-active-color: red;
+    --shape-opacity: 0.2;
+    --shape-active-opacity: 0.3;
+}
+.eim-editor .modal-header {
+    padding: 0.5rem 1rem;
+    font-size: 20px;
+    display: block;
+}
+.eim-editor .modal-header .eim-icon {
+    font-size: 16px;
+}
+.eim-icon {
+    color: orange;
+}
+.eim-editor .modal-body {
+    padding: 0.5rem 1rem;
+    display: flex;
+    gap: 15px;
+}
+.eim-editor .area-assignments {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+.eim-editor .area-assignments-table {
+    max-width: 460px;
+    margin: 10px 0;
+    padding-right: 5px;
+    overflow-y: scroll;
+    flex-grow: 1;
+}
+.eim-editor .area-style-sample {
+    display: inline-block;
+    vertical-align: text-bottom;
+    width: 20px;
+    height: 20px;
+    background-color: rgb(180, 180, 180);
+}
+.eim-editor .field-name {
+    font-weight: bold;
+}
+tr.area td {
+    padding: 0.2rem !important;
+}
+tr.area .form-check {
+    margin-top: 8px;
+}
+.assignables .badge {
+    font-weight: normal !important;
+}
+.assignables .badge i {
+    font-size: 70% !important;
+}
+.bootstrap-select .dropdown-menu li a {
+    font-size: 13px;
+}
+.bootstrap-select .dropdown-menu li a:hover {
+    font-size: 13px;
+}
+svg.eim-svg {
+    position: absolute;
+    left: 0;
+    top: 0;
+    cursor: not-allowed;
+    outline: 1px orange dotted;
+    outline-offset: -1px;
+}
+svg.eim-svg:has(.editing) {
+    cursor: crosshair;
+}
+svg.eim-svg .anchor {
+    cursor: default;
+    stroke: var(--anchor-stroke-color);
+    stroke-width: var(--stroke-width);
+    fill: var(--anchor-fill-color);
+    opacity: 0.7;
+    z-index: 100;
+}
+svg.eim-svg .anchor.active {
+    stroke-width: calc(var(--stroke-width) * 2);
+    fill: var(--anchor-active-fill-color);
+}
+svg.eim-svg .anchor.dragging {
+    opacity: 0;
+}
+svg.eim-svg polygon {
+    stroke-width: 1;
+    stroke:var(--shape-active-color);
+    fill: var(--shape-active-color);
+    opacity: var(--shape-active-opacity);
+}
+svg.eim-svg polygon.background {
+    stroke-width: 1;
+    stroke: var(--shape-color);
+    fill: var(--shape-color);
+    opacity: var(--shape-opacity);
+}
+svg.eim-svg.preview polygon.background {
+    cursor: pointer;
+}
+svg.eim-svg.edit polygon.background {
+    cursor: default;
+}
+svg.eim-svg.move polygon.background {
+    cursor: move;
+}
+svg.eim-svg.edit polygon.background.editing {
+    cursor: crosshair;
+}
+svg.eim-svg polygon.background.active {
+    display: none;
+}
+svg.eim-svg.preview {
+    cursor: default;
+    outline: 2px var(--bs-primary) solid;
+}
+svg.eim-svg.preview polygon.background {
+    opacity: 0;
+    cursor: pointer;
+}
+svg.eim-svg.preview polygon.background.selected {
+    opacity: 0.6;
+}
+svg.eim-svg.preview polygon.background:not(.selected):hover {
+    opacity: 0.1;
+}
+#eim-editor-tooltip {
+    background: cornsilk;
+    border: 1px solid black;
+    border-radius: 5px;
+    padding: 2px 5px;
+    z-index: 999999;
+}
+.eim-style-button {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-right: 3px;
+}
+#eim-container {
+    flex-grow: 1;
+    position: relative;
+    overflow: auto;
+    padding: 0;
+}
+table.eim-areas td {
+    vertical-align: middle;
+}
+table.eim-areas th.eim-col-actions {
+    min-width: 85px;
+    font-weight: normal;
+}
+table.eim-areas th.eim-col-edit,
+table.eim-areas th.eim-col-select,
+table.eim-areas th.eim-col-style {
+    min-width: 25px;
+}
+table.eim-areas th.eim-col-target {
+    padding-left: 14px;
+}
+.eim-editor .drag-handle {
+    cursor: grab;
+    text-align: center;
+    width: 10px;
+    color: rgb(139, 154, 218);
+}
+.eim-editor tr.dragging {
+    opacity: .5;
+}

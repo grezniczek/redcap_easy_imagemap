@@ -10,16 +10,17 @@
             "institution": "Ruhr-Universität Bochum"
         }
     ],
-    "framework-version": 10,
-    "permissions": [
-        "redcap_data_entry_form",
-        "redcap_survey_page",
-        "redcap_every_page_top"
-    ],
+    "framework-version": 16,
     "auth-ajax-actions": [
         "get-fields",
         "edit-map",
         "save-map"
+    ],
+    "action-tags": [
+        {
+            "tag": "@EASYIMAGEMAP",
+            "description": "Converts images in descriptive fields into clickable image maps. Simply add the action tag to a descriptive field that has an image that is displayed inline. Once added, a button to set up the image map will appear in the Online Designer."
+        }
     ],
     "system-settings": [
     ],
@@ -29,11 +30,5 @@
             "name": "Output debug information to the browser console",
             "type": "checkbox"
         }
-    ],
-    "compatibility": {
-        "php-version-min": "7.4.0",
-        "php-version-max": "",
-        "redcap-version-min": "12.2.10",
-        "redcap-version-max": ""
-     }
+    ]
 }
