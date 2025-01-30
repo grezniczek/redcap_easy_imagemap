@@ -81,6 +81,7 @@ svg.eim-svg .anchor {
     stroke-width: var(--stroke-width);
     fill: var(--anchor-fill-color);
     opacity: 0.7;
+    z-index: 100;
 }
 svg.eim-svg .anchor.active {
     stroke-width: calc(var(--stroke-width) * 2);
@@ -96,13 +97,21 @@ svg.eim-svg polygon {
     opacity: var(--shape-active-opacity);
 }
 svg.eim-svg polygon.background {
-    cursor: pointer;
     stroke-width: 1;
     stroke: var(--shape-color);
     fill: var(--shape-color);
     opacity: var(--shape-opacity);
 }
-svg.eim-svg polygon.background.editing {
+svg.eim-svg.preview polygon.background {
+    cursor: pointer;
+}
+svg.eim-svg.edit polygon.background {
+    cursor: default;
+}
+svg.eim-svg.move polygon.background {
+    cursor: move;
+}
+svg.eim-svg.edit polygon.background.editing {
     cursor: crosshair;
 }
 svg.eim-svg polygon.background.active {

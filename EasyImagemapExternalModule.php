@@ -446,7 +446,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "fieldName" => $field_name,
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
-            "map" => empty($params) ? [] : $params,
+            "map" => empty($params) ? [] : $params["shapes"],
             "assignables" => $assignables,
         ];
     }
@@ -499,7 +499,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $field_data = $this->get_field_metadata($field_name);
         $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
         $search = $at["match"];
-        $json = json_encode($map, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
+        $store = [
+            "shapes" => $map,
+            "bounds" => $data["bounds"],
+        ];
+        $json = json_encode($store, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"] . "=" . $json;
         $misc = trim(str_replace($search, $replace, $field_data["misc"]));
         $metadata_table = $this->get_project_metadata_table();
