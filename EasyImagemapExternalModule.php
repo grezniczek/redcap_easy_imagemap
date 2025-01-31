@@ -129,13 +129,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 if (in_array($target_field, $page_fields, true)) {
                     // Does the code exist?
                     if (($code == "" && $target_type != "checkbox") || array_key_exists($code, $target_enum)) {
-                        $areas[] = [
-                            "points" => $map["points"],
+                        $area = [
                             "target" => $target_field,
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
                             "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],
                         ];
+                        foreach (['poly', 'rect', 'ell'] as $shape) {
+                            if (isset($map[$shape])) {
+                                $area[$shape] = $map[$shape];
+                            }
+                        }
+                        $areas[] = $area;
                     } else {
                         $warnings[] = "Target field '$target_field' has no matching option for '$code'. The correspinding map has been removed.";
                     }
@@ -148,7 +153,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 $maps[$map_field_name]["hash"] = $edoc_hash;
                 $maps[$map_field_name]["areas"] = $areas;
                 $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
-                $maps[$map_field_name]["two-way"] = $mf_meta["two-way"];
                 $targets = array_merge($targets, $map_targets);
             }
         }
@@ -447,6 +451,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
             "map" => empty($params) ? [] : $params["shapes"],
+            "bounds" => empty($params) ? [] : $params["bounds"],
             "assignables" => $assignables,
         ];
     }
