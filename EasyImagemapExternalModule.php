@@ -109,6 +109,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $config = array(
             "version" => $this->VERSION,
             "debug" => $this->js_debug,
+            "hashes" => [],
         );
         $page_fields = $this->get_form_fields($form);
         // Process all map fields and assemble metadata needed for map rendering
@@ -151,6 +152,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
             if (count($mf_meta["map"] ?? [])) {
+                $config["hashes"][$edoc_hash] = $map_field_name;
                 $maps[$map_field_name]["hash"] = $edoc_hash;
                 $maps[$map_field_name]["areas"] = $areas;
                 $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
@@ -164,16 +166,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $config["errors"] = array_unique($errors);
         }
 
+        // Output JS and init code
         $ih = InjectionHelper::init($this);
         $ih->js("js/EasyImagemap-Display.js", $inline_js);
-?>
-        <script>
-            $(function() {
-                DE_RUB_EasyImagemap.init(<?= json_encode($config) ?>);
-            });
-        </script>
-    <?php
-        #endregion
+        $ih->css("css/EasyImagemap-Display.css", $inline_js);
+        $this->initializeJavascriptModuleObject();
+        $jsmo_name = $this->getJavascriptModuleObjectName();
+        print \RCView::script("DE_RUB_EasyImagemap.init(".json_encode($config).", $jsmo_name);");
     }
 
     #endregion

@@ -27,6 +27,9 @@ let EIM_radioResetVal = null;
 /** Original 'saveLocking()' function */
 let EIM_saveLocking = null;
 
+/** Original 'fitImg()' function */
+let EIM_fitImg = null;
+
 /** Holds data required for two-way data binding */
 const twoWayRadioResetData = {};
 
@@ -36,20 +39,46 @@ const twoWayRadioResetData = {};
  * Implements the public init method.
  * Sets config and calls the logic to wire up each image map.
  * @param {object} config_data 
+ * @param {object} jsmo
  */
-function initialize(config_data) {
+function initialize(config_data, jsmo) {
     config = config_data;
+    config.JSMO = jsmo;
     log('Initialzing ...', config);
-    const startTime = performance.now();
-    // Initialize all maps
-    for (const mapField in config.maps) {
-        try {
-            addMap(mapField, config.maps[mapField], retryCount);
+    
+    // Initialize image maps in the afterRender callback of the JSMO
+    jsmo.afterRender(function() {
+        const startTime = performance.now();
+        for (const mapField in config.maps) {
+            try {
+                setupAddMap(mapField, config.maps[mapField], retryCount);
+            }
+            catch(ex) {
+                error('Failed to setup map for field \'' + mapField + '\'.', ex);
+            }
         }
-        catch(ex) {
-            error('Failed to setup map for field \'' + mapField + '\'.', ex);
-        }
+        const endTime = performance.now();
+        const duration = endTime - startTime;
+        log('Initializiation complete (' + duration.toFixed(1) + 'ms).');
+    });
+
+    // Hook into image fitting
+    if (typeof window['fitImg'] != 'undefined') {
+        EIM_fitImg = window['fitImg'];
+        window['fitImg'] = function(img) { 
+            EIM_fitImg(img);
+            const lsrc = img.getAttribute('lsrc');
+            const url = new URL('https://fake.url' + lsrc);
+            const hash = url.searchParams.get('doc_id_hash') ?? '';
+            const field = config.hashes[hash] ?? '';
+            if (field) {
+                log('Adding map for: ' + field);
+                addMap(field, config.maps[field], $(img));
+            }
+        };
     }
+
+
     // Hook into form locking logic
     if (typeof window['saveLocking'] != 'undefined') {
         EIM_saveLocking = window['saveLocking'];
@@ -64,9 +93,6 @@ function initialize(config_data) {
             }
         };
     }
-    const endTime = performance.now();
-    const duration = endTime - startTime;
-    log('Initializiation complete (' + duration.toFixed(1) + 'ms).');
 }
 
 /**
@@ -75,14 +101,14 @@ function initialize(config_data) {
  * @param {object} map 
  * @param {Number} retry 
  */
-function addMap(field, map, retry) {
+function setupAddMap(field, map, retry) {
     // Locate the field/image - this may take some retries
     const query = 'img[lsrc*="' + map.hash + '"]';
     const $img = $(query);
     if ($img.length != 1) {
         if (retry > 0) {
             setTimeout(function() {
-                addMap(field, map, retry - 1);
+                setupAddMap(field, map, retry - 1);
             }, retryTime);
         }
         else {
@@ -92,61 +118,55 @@ function addMap(field, map, retry) {
     }
     log('Setting up field \'' + field + '\' (after ' + (retryCount - retry) + ' retries):', map);
 
-    function addMapDo() {
-        // Build SVG to overlay on image - we need to wrap the image first
-        const $wrapper = $img.wrap('<div style="position:relative;"></div>').css('max-width','100%').css('height','auto').parent();
-        // Defer until image is displayed
-        
-        // Adjust for image postion - get its top / left
-        const wrapperTop = $wrapper.offset()?.top ?? 0;
-        const imgTop = $img.offset()?.top ?? 0;
-        const wrapperLeft = $wrapper.offset()?.left ?? 0;
-        const imgLeft = $img.offset()?.left ?? 0;
-        const svgTop = imgTop - wrapperTop;
-        const svgLeft = imgLeft - wrapperLeft;
-        const $svg = $('<svg data-field="' + field + '" tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;position:absolute;top:' + svgTop + ';left:'+ svgLeft + '" height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
-        $wrapper.append($svg);
-        const svg = $svg[0];
-        // Add the areas and styles
-        const styles = [];
-        for (const areaIdx in map.areas) {
-            const id = 'eim-'+generateUUID();
-            const area = map.areas[areaIdx];
-            area.id = id;
-            const type = config.targets[area.target];
-            const poly = createSVG('polygon', { 
-                points: area.points,
-                id: id,
-                'data-target': area.target,
-                'data-code': area.code,
+}
+
+/**
+ * Adds an SVG overlay to the image
+ * @param {string} field 
+ * @param {Object} map 
+ * @param {JQuery<HTMLElement>} $img 
+ */
+function addMap(field, map, $img) {
+    // Build SVG to overlay on image - we need to wrap the image first
+    const $wrapper = $img.wrap('<div class="eim-wrapper""></div>').parent();
+    const $svg = $('<svg data-field="' + field + '" tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
+    $wrapper.append($svg);
+    const svg = $svg[0];
+    // Add the areas and styles
+    const styles = [];
+    for (const areaIdx in map.areas) {
+        const id = 'eim-'+generateUUID();
+        const area = map.areas[areaIdx];
+        area.id = id;
+        const targetType = config.targets[area.target];
+        let shape = null;
+        if (area.poly) {
+            shape = createSVG('polygon', { 
+                points: area.poly,
+                id: id
             });
-    
+        }
+        // TODO: other shape types
+        if (shape != null) {
             styles.push(
-                '#' + id + ' {stroke-widht:1;stroke:orange;fill:orange;opacity:0.01;cursor:pointer;}\n' + 
-                '#' + id + ':hover {opacity:0.1;}\n' + 
+                '#' + id + ' {stroke-width:1;stroke:orange;fill:orange;opacity:0.05;cursor:pointer;}\n' + 
+                '#' + id + ':hover {opacity:0.2;}\n' + 
                 '#' + id + '.selected {opacity:0.4;}\n'
             );
-            svg.append(poly);
-            if (checkTargetValue(type, area.target, area.code)) {
-                poly.classList.add('selected');
+            svg.append(shape);
+            if (checkTargetValue(targetType, area.target, area.code)) {
+                shape.classList.add('selected');
             }
         }
-        $('body').append('<style>' + styles.join('') + '</style>')
-        // Show the SVG overlay once the image has completed loading (otherwise, the imagemap might show first)
-        // Hide the SVG to prevent the overlay from showing while the image is already gone 
-        $(window).on('beforeunload', function() {
-            $svg.hide();
-        });
-        addInteractivity(field);
-        $svg.show();
     }
-    if ($img.prop('complete') && $img.prop('naturalWidth') > 0) {
-        addMapDo();
-    } else {
-        $img.one('load', function() {
-            addMapDo();
-        });
-    }
+    $('body').append('<style>' + styles.join('') + '</style>')
+    // Hide the SVG to prevent the overlay from showing while the image is already gone 
+    $(window).on('beforeunload', function() {
+        $svg.hide();
+    });
+    addInteractivity(field);
+
+    $svg.show();
 }
 
 /**

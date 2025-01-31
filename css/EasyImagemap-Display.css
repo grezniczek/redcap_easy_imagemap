@@ -1,0 +1,11 @@
+.eim-wrapper {
+    position: relative;
+    display: inline-grid;
+    width: max-content;
+    height: max-content;
+}
+.eim-wrapper svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
