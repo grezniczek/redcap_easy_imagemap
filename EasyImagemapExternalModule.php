@@ -134,6 +134,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
                             "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],
+                            "style" => $map["style"] ?? [],
                         ];
                         foreach (['poly', 'rect', 'ell'] as $shape) {
                             if (isset($map[$shape])) {
