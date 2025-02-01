@@ -132,6 +132,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     if (($code == "" && $target_type != "checkbox") || array_key_exists($code, $target_enum)) {
                         $area = [
                             "target" => $target_field,
+                            "mode" => $map["mode"],
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
                             "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],

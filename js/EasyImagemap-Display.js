@@ -78,8 +78,7 @@ function initialize(config_data, jsmo) {
         };
     }
 
-
-    // Hook into form locking logic
+    // Hook into form locking logic - Not sure why this was needed.
     if (typeof window['saveLocking'] != 'undefined') {
         EIM_saveLocking = window['saveLocking'];
         window['saveLocking'] = function(lock_action, esign_action) { 
@@ -102,7 +101,7 @@ function initialize(config_data, jsmo) {
  * @param {Number} retry 
  */
 function setupAddMap(field, map, retry) {
-    // Locate the field/image - this may take some retries
+    // Locate the field/image - this may take some retries - although it should not now with hooking into fitImg().
     const query = 'img[lsrc*="' + map.hash + '"]';
     const $img = $(query);
     if ($img.length != 1) {
@@ -117,7 +116,6 @@ function setupAddMap(field, map, retry) {
         return;
     }
     log('Setting up field \'' + field + '\' (after ' + (retryCount - retry) + ' retries):', map);
-
 }
 
 /**
@@ -129,9 +127,24 @@ function setupAddMap(field, map, retry) {
 function addMap(field, map, $img) {
     // Build SVG to overlay on image - we need to wrap the image first
     const $wrapper = $img.wrap('<div class="eim-wrapper""></div>').parent();
-    const $svg = $('<svg data-field="' + field + '" tabindex="0" data-imagemap-id="eim-' + map.hash + '" style="display:none;height="' + map.bounds.height + 'px" width="' + map.bounds.width + 'px" viewBox="0 0 ' + map.bounds.width + ' ' + map.bounds.height + '"></svg>');
-    $wrapper.append($svg);
-    const svg = $svg[0];
+    // const $svg = $('<svg width="' + map.bounds.width + 'px" height="' + map.bounds.height + 'px"></svg>')
+    //     .attr('data-field', field)
+    //     .attr('data-imagemap-id', 'eim-' + map.hash)
+    //     .attr('tabindex', '0')
+    //     .attr('viewBox', '0 0 ' + map.bounds.width + ' ' + map.bounds.height)
+    //     .css('display', 'none');
+    // $wrapper.append($svg);
+    // const svg = $svg[0];
+    const svg = createSVG('svg', {
+        width: map.bounds.width,
+        height: map.bounds.height,
+        'data-field': field,
+        'data-imagemap-id': 'eim-' + map.hash,
+        tabindex: '0',
+        viewBox: '0 0 ' + map.bounds.width + ' ' + map.bounds.height,
+        style: 'display: none;'
+    });
+    $wrapper.append(svg);
     // Add the areas and styles
     const styles = [];
     for (const areaIdx in map.areas) {
@@ -162,11 +175,10 @@ function addMap(field, map, $img) {
     $('body').append('<style>' + styles.join('') + '</style>')
     // Hide the SVG to prevent the overlay from showing while the image is already gone 
     $(window).on('beforeunload', function() {
-        $svg.hide();
+        svg.remove();
     });
     addInteractivity(field);
-
-    $svg.show();
+    svg.style.display = 'block';
 }
 
 /**
@@ -219,7 +231,7 @@ function addInteractivity(field) {
             const id = area.id;
             const type = config.targets[area.target];
             if (!checkTargetDisabled(type, area.target, area.code)) {
-                setupInteractivity(field, id, type, area.target, area.code, map['two-way']);
+                setupInteractivity(field, id, type, area.target, area.code, area.mode);
             }
         }
     }
@@ -235,12 +247,12 @@ function addInteractivity(field) {
  * @param {string} type 
  * @param {string} target 
  * @param {string} code 
- * @param {boolean} twoWay Whether to enable two-way binding (changing input elements updates the map)
+ * @param {string} mode
  */
-function setupInteractivity(field, id, type, target, code, twoWay) {
-    const poly = $('#' + id)[0];
-    poly.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
-    if (twoWay) {
+function setupInteractivity(field, id, type, target, code, mode) {
+    const shape = $('#' + id)[0];
+    shape.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
+    if (mode == '2-way') {
         setupTwoWayBinding(field, id, type, target, code);
         if (EIM_radioResetVal == null) {
             // Hijack radioResetVal
