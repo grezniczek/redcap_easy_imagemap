@@ -198,6 +198,7 @@ function editImageMap() {
         width: w,
         height: h
     };
+    editorData.zoom = 1;
     svg = $svg[0];
     svg.addEventListener('pointerup', handleSVGEvent);
     svg.addEventListener('pointerdown', handleSVGEvent);
@@ -449,6 +450,10 @@ function setMode(mode) {
         $('button[data-action="mode-move"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $svg.addClass('edit').removeClass('move').removeClass('preview');
         log('Mode updated to: ' + mode);
+        if (prevMode == 'move' && editorData.selection.length == 1) {
+            // When there is only a single item in the selection, then set it as the currently edited area
+            setCurrentEditArea(editorData.selection[0]);
+        }
     }
     else if (mode == 'move' && prevMode != 'move-moving') {
         // Add current area to move selection (if there is one) and clear current area.
@@ -461,7 +466,7 @@ function setMode(mode) {
         $svg.addClass('move').removeClass('edit').removeClass('preview');
         log('Mode updated to: ' + mode);
     }
-    else if (!mode == 'move') {
+    else if (mode != 'move') {
         $('button[data-action="mode-move"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
     }
@@ -533,6 +538,30 @@ function updateSelection() {
     });
 }
 
+function moveSelection(dx, dy) {
+    for (const areaId of editorData.selection) {
+        const area = editorData.areas[areaId];
+        log('Moving area ' + areaId + ' by ' + dx + ', ' + dy, area);
+        area.data = applyTranslation(area.data, dx, dy);
+        $svg.find('[data-id="' + areaId + '"]').each(function() {
+            this.setAttributeNS(null, 'points', area.data ?? '');
+        });
+    }
+}
+
+function applyTranslation(data, dx, dy) {
+    // Apply translation to all coordinate pairs in area.data
+    const pairs = data.split(' ');
+    const newPairs = [];
+    for (const pair of pairs) {
+        const parts = pair.split(',');
+        const x = parseFloat(parts[0]) + dx;
+        const y = parseFloat(parts[1]) + dy;
+        newPairs.push(x + ',' + y);
+    }
+    return newPairs.join(' ');
+}
+
 //#endregion
 
 
@@ -541,6 +570,11 @@ function updateSelection() {
 
 function handleKeyEvent(e) {
     if (e.target.tagName == 'INPUT' || e.target.tagName == 'TEXTAREA') return;
+    const modifier = [
+        e.altKey ? 'Alt' : '',
+        e.ctrlKey ? 'Ctrl' : '',
+        e.shiftKey ? 'Shift' : ''
+    ].join('');
     // Key handling depends on mode
     // Preview mode
     if (editorData.mode == 'preview') {
@@ -553,14 +587,12 @@ function handleKeyEvent(e) {
         }
     }
     else if (editorData.mode == 'move') {
-        // TODO
+        // Switch to edit mode when 'e' is pressed
+        if (modifier == '' && e.key == 'e') {
+            setMode('edit');
+        }
     }
     else if (editorData.mode == 'edit') {
-        const modifier = [
-            e.altKey ? 'Alt' : '',
-            e.ctrlKey ? 'Ctrl' : '',
-            e.shiftKey ? 'Shift' : ''
-        ].join('');
         // Esc will undo any changes
         if (modifier == '' && e.key == 'Escape') {
             // TODO
@@ -577,6 +609,10 @@ function handleKeyEvent(e) {
             clearEditAnchors();
             e.preventDefault();
             return false;
+        }
+        // When the letter m is pressed, switch to move mode
+        else if (modifier == '' && e.key == 'm') {
+            setMode('move');
         }
     }
 }
@@ -765,6 +801,7 @@ function handleSVGEvent(e) {
             else {
                 // Inside of edit area - apply dx and dy
                 log('Move dx:', dx, 'dy:', dy);
+                moveSelection(dx, dy);
             }
             setMode('move');
             return;
@@ -950,7 +987,7 @@ function cloneArea(origId) {
         mode: orig.mode,
         label: '',
         target: '',
-        data: orig.data
+        data: applyTranslation(orig.data, 10, 10)
     };
     return uuid;
 }
@@ -1043,6 +1080,7 @@ function executeEditorAction(action, $row) {
         //
         case 'edit-area': {
             const id = $row.attr('data-area-id');
+            setMode('edit');
             setCurrentEditArea(id);
         }
         break;
