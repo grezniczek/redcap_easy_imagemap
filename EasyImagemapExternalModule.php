@@ -100,10 +100,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     /**
      * Injects the code necessary for rendering imagemaps on data entry or survey pages.
      * @param string[] $map_fields 
-     * @param string $form
+     * @param string|string[] $formOrFormFields
      * @param boolean $inline_js 
      */
-    private function display_imagemaps($map_fields, $form, $inline_js)
+    private function display_imagemaps($map_fields, $formOrFormFields, $inline_js)
     {
         $this->require_proj();
         $config = array(
@@ -111,7 +111,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "debug" => $this->js_debug,
             "hashes" => [],
         );
-        $page_fields = $this->get_form_fields($form);
+        $page_fields = is_array($formOrFormFields) ? $formOrFormFields : $this->get_form_fields($formOrFormFields);
         // Process all map fields and assemble metadata needed for map rendering
         $warnings = [];
         $errors = [];
