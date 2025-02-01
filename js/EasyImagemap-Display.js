@@ -125,16 +125,8 @@ function setupAddMap(field, map, retry) {
  * @param {JQuery<HTMLElement>} $img 
  */
 function addMap(field, map, $img) {
-    // Build SVG to overlay on image - we need to wrap the image first
+    // Build <svg> to overlay on the image - we need to wrap the image first
     const $wrapper = $img.wrap('<div class="eim-wrapper""></div>').parent();
-    // const $svg = $('<svg width="' + map.bounds.width + 'px" height="' + map.bounds.height + 'px"></svg>')
-    //     .attr('data-field', field)
-    //     .attr('data-imagemap-id', 'eim-' + map.hash)
-    //     .attr('tabindex', '0')
-    //     .attr('viewBox', '0 0 ' + map.bounds.width + ' ' + map.bounds.height)
-    //     .css('display', 'none');
-    // $wrapper.append($svg);
-    // const svg = $svg[0];
     const svg = createSVG('svg', {
         width: map.bounds.width,
         height: map.bounds.height,
@@ -160,7 +152,11 @@ function addMap(field, map, $img) {
             });
         }
         // TODO: other shape types
-        if (shape != null) {
+        if (shape == null) {
+            // No shape - remove
+            map.areas.splice(areaIdx, 1);
+        }
+        else {
             styles.push(
                 '#' + id + ' {stroke-width:1;stroke:orange;fill:orange;opacity:0.05;cursor:pointer;}\n' + 
                 '#' + id + ':hover {opacity:0.2;}\n' + 
@@ -185,13 +181,13 @@ function addMap(field, map, $img) {
  * Updates an area (adds or removes the 'selected' class)
  * @param {string} field 
  * @param {string} id 
- * @param {string} type 
+ * @param {string} targetType 
  * @param {string} target 
  * @param {string} code 
  */
-function updateAreaClass(field, id, type, target, code) {
+function updateAreaClass(field, id, targetType, target, code) {
     log('Updating area', field, target, code);
-    if (['yesno','truefalse','radio','select'].includes(type)) {
+    if (['yesno','truefalse','radio','select'].includes(targetType)) {
         // Unselect all for same target in case of mutually exclusive types
         $('svg[data-field="' + field + '"] polygon[data-target="' + target + '"]').each(function() {
             this.classList.remove('selected');
@@ -199,24 +195,11 @@ function updateAreaClass(field, id, type, target, code) {
     }
     if ((id ?? '').length > 0) {
         setTimeout(function() {
-            $('#' + id)[0].classList[checkTargetValue(type, target, code) ? 'add' : 'remove']('selected');
+            $('#' + id)[0].classList[checkTargetValue(targetType, target, code) ? 'add' : 'remove']('selected');
         }, 0);
     }
 }
 
-/**
- * Creates an SVG element and sets its attributes
- * @param {string} tag 
- * @param {Object<string,string>} attrs 
- * @returns {SVGElement}
- */
-function createSVG(tag, attrs) {
-    const el= document.createElementNS('http://www.w3.org/2000/svg', tag);
-    for (const key in attrs) {
-        el.setAttribute(key, attrs[key]);
-    }
-    return el;
-}
 
 //#region Basic Form Interaction
 
@@ -247,11 +230,18 @@ function addInteractivity(field) {
  * @param {string} type 
  * @param {string} target 
  * @param {string} code 
- * @param {string} mode
+ * @param {'2-way'|'to-target'|'from-target'} mode
  */
 function setupInteractivity(field, id, type, target, code, mode) {
-    const shape = $('#' + id)[0];
-    shape.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
+    const $shape = $('#' + id);
+    if ($shape.length == 0) {
+        warn('No shape found for area', field, target, code);
+        return;
+    }
+    const shape = $shape[0];
+    if (mode != 'from-target') {
+        shape.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
+    }
     if (mode == '2-way') {
         setupTwoWayBinding(field, id, type, target, code);
         if (EIM_radioResetVal == null) {
@@ -375,16 +365,16 @@ function setTargetValue(field, id, type, target, code) {
  * Adds two-way binding between map areas and form elements
  * @param {string} field 
  * @param {string} id 
- * @param {string} type 
+ * @param {string} targetType 
  * @param {string} target 
  * @param {string} code 
  */
-function setupTwoWayBinding(field, id, type, target, code) {
-    switch (type) {
+function setupTwoWayBinding(field, id, targetType, target, code) {
+    switch (targetType) {
         case 'checkbox': {
             const $el = $('input[name="__chk__' + target + '_RC_' + code + '"]')
             $el.on('change', function() {
-                updateAreaClass(field, id, type, target, code);
+                updateAreaClass(field, id, targetType, target, code);
             });
             trackChange($el[0], 'value');
         }
@@ -395,14 +385,14 @@ function setupTwoWayBinding(field, id, type, target, code) {
             if (code != '') {
                 const $el = $('input[type="radio"][name="' + target + '___radio"]');
                 $el.on('change', function() {
-                    updateAreaClass(field, id, type, target, code);
+                    updateAreaClass(field, id, targetType, target, code);
                 });
             }
             else {
                 if (typeof twoWayRadioResetData[target] == 'undefined') twoWayRadioResetData[target] = {};
                 if (typeof twoWayRadioResetData[target][field] == 'undefined') twoWayRadioResetData[target][field] = {};
                 twoWayRadioResetData[target][field][id] = {
-                    type: type,
+                    type: targetType,
                     code: code,
                 };
             }
@@ -420,7 +410,7 @@ function setupTwoWayBinding(field, id, type, target, code) {
                     const this_target = ($el.attr('name') ?? '').toString();
                     const this_code = ($el.val() ?? '').toString();
                     const this_id = $svg.find('polygon[data-target="' + this_target + '"][data-code="' + this_code + '"]').attr('id') ?? ''
-                    updateAreaClass(field, this_id, type, this_target, this_code);
+                    updateAreaClass(field, this_id, targetType, this_target, this_code);
                 });
             }
         }
@@ -466,6 +456,20 @@ function trackChange(el, attributeName = 'value') {
 //#endregion
 
 //#region Helpers
+
+/**
+ * Creates an SVG element and sets its attributes
+ * @param {string} tag 
+ * @param {Object<string,string>} attrs 
+ * @returns {SVGElement}
+ */
+function createSVG(tag, attrs) {
+    const el= document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const key in attrs) {
+        el.setAttribute(key, attrs[key]);
+    }
+    return el;
+}
 
 /**
  * Generates a UUID

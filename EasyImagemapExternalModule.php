@@ -122,6 +122,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $mf_meta = $this->get_field_info($map_field_name);
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
+                if (($map["target"] ?? "") == "") continue; // Skip when no target is set
                 list($target_field, $code) = explode(":", $map["target"], 2);
                 $target_field_info = $this->get_field_metadata($target_field);
                 $target_type = $target_field_info["element_type"];
@@ -132,24 +133,31 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     if (($code == "" && $target_type != "checkbox") || array_key_exists($code, $target_enum)) {
                         $area = [
                             "target" => $target_field,
-                            "mode" => $map["mode"],
+                            "mode" => $map["mode"] ?? "2-way",
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
                             "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],
                             "style" => $map["style"] ?? [],
                         ];
+                        $hasShape = false;
                         foreach (['poly', 'rect', 'ell'] as $shape) {
-                            if (isset($map[$shape])) {
+                            if (isset($map[$shape]) && !empty($map[$shape])) {
                                 $area[$shape] = $map[$shape];
+                                $hasShape = true;
                             }
                         }
-                        $areas[] = $area;
+                        if ($hasShape) {
+                            $areas[] = $area;
+                        }
+                        else {
+                            $warnings[] = "Target field '$target_field' has no valid shape for '$code'. The corresponding map has been removed.";
+                        }
                     } else {
-                        $warnings[] = "Target field '$target_field' has no matching option for '$code'. The correspinding map has been removed.";
+                        $warnings[] = "Target field '$target_field' has no matching option for '$code'. The corresponding map has been removed.";
                     }
                     $map_targets[$target_field] = $target_type;
                 } else {
-                    $errors[] = "Target field '$target_field' is not on this data entry form or survey page. The correspinding map has been removed.";
+                    $errors[] = "Target field '$target_field' is not on this data entry form or survey page. The corresponding map has been removed.";
                 }
             }
             if (count($mf_meta["map"] ?? [])) {
