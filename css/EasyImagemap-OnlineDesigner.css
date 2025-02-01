@@ -7,7 +7,14 @@
     --shape-active-color: red;
     --shape-opacity: 0.2;
     --shape-active-opacity: 0.3;
+    --shape-selected-stroke-color: red;
+    --shape-selected-color: orange;
 }
+
+.eim-editor .btn-toolbar .btn-group {
+    margin-bottom: .2em;
+}
+
 .eim-editor .modal-header {
     padding: 0.5rem 1rem;
     font-size: 20px;
@@ -68,9 +75,10 @@ svg.eim-svg {
     position: absolute;
     left: 0;
     top: 0;
-    cursor: not-allowed;
     outline: 1px orange dotted;
     outline-offset: -1px;
+    --move-x: 0;
+    --move-y: 0;
 }
 svg.eim-svg:has(.editing) {
     cursor: crosshair;
@@ -96,39 +104,49 @@ svg.eim-svg polygon {
     fill: var(--shape-active-color);
     opacity: var(--shape-active-opacity);
 }
-svg.eim-svg polygon.background {
+svg.eim-svg .background {
     stroke-width: 1;
     stroke: var(--shape-color);
     fill: var(--shape-color);
     opacity: var(--shape-opacity);
 }
-svg.eim-svg.preview polygon.background {
+svg.eim-svg.preview .background {
     cursor: pointer;
 }
-svg.eim-svg.edit polygon.background {
+svg.eim-svg.edit .background {
     cursor: default;
 }
-svg.eim-svg.move polygon.background {
+svg.eim-svg.move .background {
     cursor: move;
 }
-svg.eim-svg.edit polygon.background.editing {
+svg.eim-svg.move .background.selected {
+    stroke-width: 1;
+    stroke: var(--shape-selected-stroke-color);
+    fill: var(--shape-selected-color);
+    stroke-dasharray: 3px 3px;
+    opacity: .8;
+    translate: var(--move-x) var(--move-y);
+}
+
+svg.eim-svg.edit .background.editing {
     cursor: crosshair;
 }
-svg.eim-svg polygon.background.active {
+svg.eim-svg .background.active {
     display: none;
 }
 svg.eim-svg.preview {
     cursor: default;
     outline: 2px var(--bs-primary) solid;
 }
-svg.eim-svg.preview polygon.background {
+svg.eim-svg.preview .background {
     opacity: 0;
     cursor: pointer;
 }
-svg.eim-svg.preview polygon.background.selected {
+svg.eim-svg.preview .background.selected {
     opacity: 0.6;
+    border: 1px dotted red;
 }
-svg.eim-svg.preview polygon.background:not(.selected):hover {
+svg.eim-svg.preview .background:not(.selected):hover {
     opacity: 0.1;
 }
 #eim-editor-tooltip {

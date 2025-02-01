@@ -19,15 +19,18 @@ let $selectTemplate = $();
 let showingEditor = false;
 let JSMO = {};
 let editorData = null;
-let currentArea = null;
+
+/** @type {string} The current area */
+let currentAreaId = ''
+
 let currentAnchor = null;
+
 let editShape = null;
 let assignableLabels = {};
-let zoom = 1;
-let editMode = 'edit';
-let shapeType = 'poly';
+let _shapeType = 'poly';
 let dndInitialized = false;
 
+const moveStartPos = { x: 0, y: 0 };
 
 function initialize(config_data, jsmo_obj) {
     config = config_data;
@@ -170,7 +173,7 @@ function updateFields() {
 
 
 function editImageMap() {
-    currentArea = null;
+    currentAreaId = '';
     currentAnchor = null;
     $editor.find('.field-name').text(editorData.fieldName);
     const $container = $editor.find('#eim-container');
@@ -225,18 +228,18 @@ function editImageMap() {
 }
 
 function applyEditMode(setToMode) {
-    const prevEditMode = editMode;
+    const prevEditMode = editorData.mode;
     const editModes = ['edit','move'];
     if (!editModes.includes(setToMode.replace('mode-',''))) {
         error('Invalid edit mode ' + setToMode);
     }
-    editMode = setToMode.replace('mode-','');
+    editorData.mode = setToMode.replace('mode-','');
     editModes.forEach((mode) => {
         const btn = document.querySelector('button[data-action="mode-' + mode + '"]');
         if (btn) {
             btn.classList.remove('btn-secondary');
             btn.classList.add('btn-outline-secondary');
-            if (mode == editMode) {
+            if (mode == editorData.mode) {
                 btn.classList.remove('btn-outline-secondary');
                 btn.classList.add('btn-secondary');
             }
@@ -244,13 +247,13 @@ function applyEditMode(setToMode) {
             btn.blur();
         }
     });
-    if (prevEditMode != editMode && currentArea) {
+    if (prevEditMode != editorData.mode && currentAreaId != '') {
         updateCurrentArea();
     }
 }
 
 function updateCurrentArea() {
-    log('Todo: Update area', currentArea);
+    log('Todo: Update area', currentAreaId);
 }
 
 
@@ -275,7 +278,7 @@ function applyZoom(setToZoom) {
 
 function zoomTo(f) {
     log('Setting zoom level to: ' + f);
-    zoom = f;
+    editorData.zoom = f;
     const zW = editorData.bounds.width * f;
     const zH = editorData.bounds.height * f;
     $svg.css('width', zW + 'px').css('height', zH + 'px');
@@ -284,10 +287,10 @@ function zoomTo(f) {
     // @ts-ignore
     document.querySelector('.eim-editor').style.setProperty('--stroke-width', 1/f);
     // Redraw anchors
-    const current = currentArea;
-    setCurrentArea(null);
+    const current = currentAreaId;
+    setCurrentEditArea('');
     if (current) {
-        setCurrentArea(current);
+        setCurrentEditArea(current);
     }
 }
 
@@ -430,11 +433,12 @@ function removeAnchor(anchor) {
 
 function setMode(mode) {
     if (mode == editorData.mode) return;
+    const prevMode = editorData.mode;
     editorData.mode = mode;
-    log('Mode updated to: ' + mode);
     if (mode == 'preview') {
         $svg.addClass('preview').removeClass('move').removeClass('edit');
         $('button[data-action="preview"]').removeClass('btn-outline-primary').addClass('btn-primary');
+        log('Mode updated to: ' + mode);
     }
     else {
         $svg.removeClass('preview');
@@ -444,19 +448,94 @@ function setMode(mode) {
         $('button[data-action="mode-edit"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
         $('button[data-action="mode-move"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $svg.addClass('edit').removeClass('move').removeClass('preview');
+        log('Mode updated to: ' + mode);
     }
-    else if (mode == 'move') {
-        setCurrentArea(null);
-        clearAnchors();
+    else if (mode == 'move' && prevMode != 'move-moving') {
+        // Add current area to move selection (if there is one) and clear current area.
+        const prevAreaId = currentAreaId;
+        setCurrentEditArea('');
+        clearEditAnchors();
+        clearSelection([prevAreaId]);
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-move"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
         $svg.addClass('move').removeClass('edit').removeClass('preview');
+        log('Mode updated to: ' + mode);
     }
-    else {
+    else if (!mode == 'move') {
         $('button[data-action="mode-move"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
     }
 }
+
+//#region Selection
+
+/**
+ * Clears the current selection and optionally adds new items to the selection
+ * @param {string[]} areaIds 
+ */
+function clearSelection(areaIds = []) {
+    // Clear selection array
+    editorData.selection = [];
+    // Iterate over areaIds and add to selection
+    for (const areaId of areaIds) {
+        editorData.selection.push(areaId);
+    }
+    updateSelection();
+}
+
+/**
+ * Adds new items to the selection
+ * @param {string[]} areaIds 
+ * @param {boolean} toggle When true, items will be removed if they are already in the selection
+ * @returns 
+ */
+function addToSelection(areaIds, toggle = false) {
+    for (const areaId of areaIds) {
+        const idx = editorData.selection.indexOf(areaId);
+        if (idx > -1 && toggle) {
+            editorData.selection.splice(idx, 1);
+        }
+        else if (idx == -1) {
+            editorData.selection.push(areaId);
+        }
+    }
+    updateSelection();
+}
+
+/**
+ * Removes items from the selection
+ * @param {string[]} areaIds 
+ */
+function removeFromSelection(areaIds) {
+    for (const areaId of areaIds) {
+        const idx = editorData.selection.indexOf(areaId);
+        if (idx > -1) {
+            editorData.selection.splice(idx, 1);
+        }
+    }
+    updateSelection();
+}
+
+function updateSelection() {
+    // SVG
+    $svg.find('.background').each(function() { 
+        if (editorData.selection.includes(this.getAttribute('data-id'))) {
+            this.classList.add('selected');
+        }
+        else {
+            this.classList.remove('selected');
+        }
+    });
+    // Table
+    $('tr[data-area-id]').each(function() {
+        const checked = editorData.selection.includes(this.dataset.areaId);
+        $(this).find('input[name=checked-area]').prop('checked', checked);
+    });
+}
+
+//#endregion
+
+
 
 //#region Keyboard handling
 
@@ -495,7 +574,7 @@ function handleKeyEvent(e) {
             return false;
         }
         else if (currentAnchor && modifier == '' && e.key == 'Delete') {
-            clearAnchors();
+            clearEditAnchors();
             e.preventDefault();
             return false;
         }
@@ -504,7 +583,7 @@ function handleKeyEvent(e) {
 
 //#endregion
 
-function clearAnchors() {
+function clearEditAnchors() {
     editorData.anchors = [];
     $svg.find('.anchor').each(function() { this.remove() });
     $svg.find('.edit-shape').each(function() { this.remove() });
@@ -555,88 +634,159 @@ function handleSVGEvent(e) {
         }
     }
     // Only handle left mouse button
-    if (e.button != 0 && editorData.mode != 'drag-anchor') return;
+    if (e.button != 0 && !(editorData.mode == 'edit-move-anchor' || editorData.mode == 'move-moving')) return;
     const pos = getMousePosition(e);
     if (e.target == null) return;
     const type = e.type ?? ''
     const $target = $(e.target);
 
-    // Select an area
-    if (editorData.mode == 'edit' && type == 'pointerdown' && $target.hasClass('background') && $target.attr('data-id') != currentArea) {
-        const id = $target.attr('data-id');
-        setCurrentArea(id);
-        return;
+    //#region Mode: edit
+    if (editorData.mode == 'edit') {
+
+        // Select an area (that is not the currently edited area)
+        if (type == 'pointerdown' && $target.hasClass('background') && $target.attr('data-id') != currentAreaId) {
+            const id = $target.attr('data-id') ?? '';
+            setCurrentEditArea(id);
+            return;
+        }
+
+        // Start dragging an existing anchor or a new anchor
+        if (type == 'pointerdown' && currentAreaId != '') {
+            // Check if over existing anchor
+            if ($target.hasClass('anchor')) {
+                // Set this anchor as the active one
+                currentAnchor = $target[0];
+                $target.addClass('dragging');
+            }
+            else {
+                // Create a new anchor
+                const newAnchor = createSVG('circle', {
+                    cx: pos.x,
+                    cy: pos.y,
+                    r: 4 / editorData.zoom,
+                    'class': 'anchor active dragging',
+                });
+                svg.appendChild(newAnchor);
+                editorData.anchors.push(newAnchor);
+                currentAnchor = newAnchor;
+                updateEditShape();
+            }
+            activateAnchor(currentAnchor);
+            setMode('edit-move-anchor');
+            svg.setPointerCapture(e.pointerId);
+            return;
+        }
     }
 
-    // Toggle an area while in preview mode
-    if (editorData.mode == 'preview' && type == 'pointerdown' && $target.hasClass('background')) {
-        if ($target.hasClass('selected')) {
-            $target.removeClass('selected');
-        }
-        else {
-            $target.addClass('selected');
-        }
-        return;
-    }
-    
-    // Exit if there is no current area
-    if (!currentArea) return;
-
-    // Start an dragging or moving process
-    if (editorData.mode == 'edit' && type == 'pointerdown') {
-        // Check if over existing anchor
-        if ($target.hasClass('anchor')) {
-            // Set this anchor as the active one
-            currentAnchor = $target[0];
-            $target.addClass('dragging');
-            activateAnchor(currentAnchor);
-            // Start dragging an anchor
-            setMode('drag-anchor');
-        }
-        else {
-            // Create a new anchor
-            const newAnchor = createSVG('circle', {
-                cx: pos.x,
-                cy: pos.y,
-                r: 4 / zoom,
-                'class': 'anchor active',
-            });
-            svg.appendChild(newAnchor);
-            setMode('drag-anchor');
-            currentAnchor = newAnchor;
-            editorData.anchors.push(currentAnchor);
-            activateAnchor(currentAnchor);
+    // Move anchor
+    if (editorData.mode == 'edit-move-anchor') {
+        
+        // Drag an anchor
+        if (type == 'pointermove') {
+            // Update coordinates of anchor
+            currentAnchor.setAttributeNS(null, 'cx', pos.x);
+            currentAnchor.setAttributeNS(null, 'cy', pos.y);
             updateEditShape();
+            return;
         }
-        svg.setPointerCapture(e.pointerId);
-        return;
+
+        // End dragging of an anchor
+        if (type == 'pointerup') {
+            if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
+                // Outside of edit area - delete anchor
+                removeAnchor(currentAnchor);
+            }
+            else {
+                // Inside of edit area - make this anchor the 'active' one
+                activateAnchor(currentAnchor);
+            }
+            updateEditShape();
+            $svg.find('.anchor.dragging').removeClass('dragging');
+            svg.releasePointerCapture(e.pointerId);
+            setMode('edit');
+            return;
+        }
+    }
+    //#endregion
+
+    //#region Mode: move
+    if (editorData.mode == 'move' && $target.hasClass('background')) {
+        // Add an area to the selection in move mode
+        if (type == 'pointerdown') {
+            // Do nothing if any modifiers except CTRL are pressed
+            if (e.altKey || e.shiftKey) return;
+            const id = $target.attr('data-id') ?? '';
+            if (id != '' && editorData.areas[id]) {
+                // CTRL key means edit selection
+                if (e.ctrlKey) { 
+                    addToSelection([id], true); 
+                    return;
+                }
+                if (!$target.hasClass('selected')) {
+                    // Single select other item
+                    clearSelection([id]); 
+                }
+                // Start moving
+                hideTooltip();
+                setMode('move-moving');
+                moveStartPos.x = pos.x;
+                moveStartPos.y = pos.y;
+                svg.setPointerCapture(e.pointerId);
+            }
+            return;
+        }
     }
 
-    // Drag an anchor
-    if (editorData.mode == 'drag-anchor' && type == 'pointermove') {
-        // Update coordinates of anchor
-        currentAnchor.setAttributeNS(null, 'cx', pos.x);
-        currentAnchor.setAttributeNS(null, 'cy', pos.y);
-        updateEditShape();
-        return;
+    if (editorData.mode == 'move-moving') {
+        // Move all selected areas while in move mode
+        if (type == 'pointermove') {
+            // No keyboard modifiers must be pressed
+            if (e.altKey || e.shiftKey || e.ctrlKey) return;
+            // Update x and y translation
+            const dx = pos.x - moveStartPos.x;
+            const dy = pos.y - moveStartPos.y;
+            svg.style.setProperty('--move-x', dx + 'px');
+            svg.style.setProperty('--move-y', dy + 'px');
+            return;
+        }
+
+        // End moving
+        if (type == 'pointerup') {
+            svg.releasePointerCapture(e.pointerId);
+            // Get translated x and y
+            const dx = parseInt(svg.style.getPropertyValue('--move-x'));
+            const dy = parseInt(svg.style.getPropertyValue('--move-y'));
+            // Reset translation
+            svg.style.setProperty('--move-x', 0);
+            svg.style.setProperty('--move-y', 0);
+            if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
+                // Outside of edit area - do nothing
+            }
+            else {
+                // Inside of edit area - apply dx and dy
+                log('Move dx:', dx, 'dy:', dy);
+            }
+            setMode('move');
+            return;
+        }
+    }
+    //#endregion
+
+    // Mode: preview
+    if (editorData.mode == 'preview') {
+        // Toggle an area while in preview mode
+        if (type == 'pointerdown' && $target.hasClass('background')) {
+            if ($target.hasClass('selected')) {
+                $target.removeClass('selected');
+            }
+            else {
+                $target.addClass('selected');
+            }
+            return;
+        }
     }
 
-    // End dragging of an anchor
-    if (editorData.mode == 'drag-anchor' && type == 'pointerup') {
-        if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
-            // Outside - delete anchor
-            removeAnchor(currentAnchor);
-        }
-        else {
-            // Inside - make this anchor the 'active' one
-            activateAnchor(currentAnchor);
-        }
-        $svg.find('.anchor.dragging').removeClass('dragging');
-        setMode('edit');
-        svg.releasePointerCapture(e.pointerId);
-        updateEditShape();
-        return;
-    }
+    
 }
 
 //#endregion
@@ -665,7 +815,7 @@ function updateBackgroundShape(id, editing = false) {
         else {
             const bgPoly = createSVG('polygon', { 
                 points: area.data ?? '',
-                'class': 'background',
+                'class': 'shape background',
                 'data-id': id,
             });
             bgPoly.classList[editing ? 'add' : 'remove']('editing');
@@ -675,11 +825,23 @@ function updateBackgroundShape(id, editing = false) {
     // TODO - other shapes
 }
 
-function setCurrentArea(id) {
+/**
+ * Clears the current area
+ */
+function clearCurrentArea() {
+    setCurrentEditArea('');
+}
+
+/**
+ * Sets the current area and updates the UI
+ * @param {string} id 
+ * @returns void
+ */
+function setCurrentEditArea(id) {
     hideTooltip();
-    if (currentArea == id) return;
-    if (currentArea) {
-        storeShapeData(currentArea);
+    if (currentAreaId == id) return;
+    if (currentAreaId) {
+        storeShapeData(currentAreaId);
         $svg.find('polygon.background').each(function() {
             if (this.getAttribute('data-id') == id) {
                 this.classList.add('editing');
@@ -688,21 +850,20 @@ function setCurrentArea(id) {
                 this.classList.remove('editing');
             }
         });
-        clearAnchors();
-        $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', false);
+        clearEditAnchors();
+        $('tr[data-area-id="' + currentAreaId + '"]').find('input[name=active-area]').prop('checked', false);
     }
-    currentArea = id;
-    const area = editorData.areas[currentArea] ?? null;
+    currentAreaId = id;
+    const area = editorData.areas[currentAreaId] ?? null;
     if (area == null) return;
 
     // Set edit mode and update shape
-    setMode('edit');
     setShapeType(area.type);
     // Update table
-    $('tr[data-area-id="' + currentArea + '"]').find('input[name=active-area]').prop('checked', true);
+    $('tr[data-area-id="' + currentAreaId + '"]').find('input[name=active-area]').prop('checked', true);
     // Update SVG
-    updateBackgroundShape(currentArea, true);
-    clearAnchors();
+    updateBackgroundShape(currentAreaId, true);
+    clearEditAnchors();
     // Add new anchors
     try {
         createEditShape(area);
@@ -714,7 +875,7 @@ function setCurrentArea(id) {
                 const anchor = createSVG('circle', {
                     cx: x,
                     cy: y,
-                    r: 4 / zoom,
+                    r: 4 / editorData.zoom,
                     'class': 'anchor',
                 });
                 svg.appendChild(anchor);
@@ -743,29 +904,36 @@ function toggleSelectAll() {
     const numSelected = $('tr[data-area-id] input[type="checkbox"]:checked').length;
     if (numAreas > numSelected) {
         // Select all
-        $('tr[data-area-id] input[type="checkbox"]').prop('checked', true)
+        $('tr[data-area-id] input[type="checkbox"]').prop('checked', true);
+        if (editorData.mode == 'edit') {
+            
+        }
     }
     else if (numSelected == numAreas) {
         // Select none
-        $('tr[data-area-id] input[type="checkbox"]').prop('checked', false)
+        $('tr[data-area-id] input[type="checkbox"]').prop('checked', false);
     }
 }
 
 function setShapeType(type) {
-    shapeType = type;
-    log('Shape type set to: ' + shapeType);
+    _shapeType = type;
+    log('Shape type set to: ' + _shapeType);
     ['ell', 'rect', 'poly'].forEach(t => {
         $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
-        if (t == shapeType) {
+        if (t == _shapeType) {
             $('button[data-action="type-' + t + '"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
         }
     });
 }
 
+function getShapeType() {
+    return _shapeType;
+}
+
 function addNewArea() {
     const uuid = generateUUID();
     editorData.areas[uuid] = {
-        type: shapeType,
+        type: getShapeType(),
         mode: '2-way',
         label: '',
         target: '',
@@ -805,14 +973,12 @@ function addTableRow(id, afterId = '') {
     updateBackgroundShape(id);
 }
 
-function showPreview() {
-    setCurrentArea(null);
-    if (editorData.mode == 'preview') {
-        setMode('edit');
-    }
-    else {
-        setMode('preview');
-    }
+/**
+ * Toggle the preview mode (preview -> edit or edit/move -> preview)
+ */
+function togglePreview() {
+    clearCurrentArea();
+    setMode(editorData.mode == 'preview' ? 'edit' : 'preview');
 }
 
 
@@ -827,7 +993,7 @@ function executeEditorAction(action, $row) {
         //#region Main Toolbar
         case 'preview': {
             applyZoom('zoom1x');
-            showPreview();
+            togglePreview();
         }
         break;
         case 'zoom1x':
@@ -869,7 +1035,7 @@ function executeEditorAction(action, $row) {
         }
         break;
         case 'reset-area':
-            setCurrentArea(null);
+            clearCurrentArea();
             $('[data-action="reset-area"]')[0].blur();
         break;
         //
@@ -877,36 +1043,45 @@ function executeEditorAction(action, $row) {
         //
         case 'edit-area': {
             const id = $row.attr('data-area-id');
-            setCurrentArea(id);
+            setCurrentEditArea(id);
         }
         break;
         case 'select-area': {
             const id = $row.attr('data-area-id');
             const checked = $row.find('input[data-action="select-area"]').prop('checked');
             log('Select area ' + id + ': ' + (checked ? 'Checked' : 'Unchecked'));
-            // TODO
+            if (editorData.mode == 'move') {
+                if (checked) {
+                    addToSelection([id]);
+                }
+                else {
+                    removeFromSelection([id]);
+                }
+            }
         }
         break;
         case 'add-area': {
             const id = $row.attr('data-area-id') ?? '';
             const uuid = addNewArea();
             addTableRow(uuid, id);
-            showWhenNoAreas();
-            setCurrentArea(uuid);
+            if (editorData.mode == 'edit') {
+                setCurrentEditArea(uuid);
+            }
         }
         break;
         case 'duplicate-area': {
             const id = $row.attr('data-area-id') ?? '';
             const uuid = cloneArea(id);
             addTableRow(uuid, id);
-            showWhenNoAreas();
-            setCurrentArea(uuid);
+            if (editorData.mode == 'edit') {
+                setCurrentEditArea(uuid);
+            }
         }
         break;
         case 'remove-area': {
             const id = $row.attr('data-area-id');
-            if (id == currentArea) {
-                setCurrentArea(null);
+            if (id == currentAreaId) {
+                clearCurrentArea();
             }
             if (id && editorData.areas[id]) {
                 delete editorData.areas[id];
@@ -914,8 +1089,8 @@ function executeEditorAction(action, $row) {
                 $svg.find('polygon[data-id="' + id + '"]').each(function() {
                     this.remove();
                 });
-                showWhenNoAreas();
             }
+            showWhenNoAreas();
         }
         break;
         //#endregion
@@ -935,7 +1110,7 @@ function executeEditorAction(action, $row) {
         }
         break;
         case 'apply': {
-            setCurrentArea(null);
+            clearCurrentArea();
             const data = {
                 fieldName: editorData.fieldName,
                 formName: editorData.formName,
