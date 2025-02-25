@@ -116,9 +116,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $warnings = [];
         $errors = [];
         $maps = [];
-        $areas = [];
         $targets = [];
         foreach ($map_fields as $map_field_name => $edoc_hash) {
+            $areas = [];
             $mf_meta = $this->get_field_info($map_field_name);
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
