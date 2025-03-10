@@ -534,7 +534,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function get_project_forms()
     {
         $this->require_proj();
-        return $this->is_draft_mode() ? $this->proj->forms_temp : $this->proj->getForms();
+        return $this->is_draft_preview() ? $this->proj->forms_temp : $this->proj->getForms();
     }
 
     private function get_form_fields($form_name)
@@ -550,7 +550,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function get_project_metadata()
     {
         $this->require_proj();
-        return $this->is_draft_mode() ? $this->proj->metadata_temp : $this->proj->getMetadata();
+        return $this->is_draft_preview() ? $this->proj->metadata_temp : $this->proj->getMetadata();
     }
 
     private function get_field_metadata($field_name)
@@ -566,13 +566,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function get_project_metadata_table()
     {
         $this->require_proj();
-        return $this->is_draft_mode() ? "redcap_metadata_temp" : "redcap_metadata";
+        return $this->is_draft_preview() ? "redcap_metadata_temp" : "redcap_metadata";
     }
 
-    private function is_draft_mode()
+    private function is_draft_preview()
     {
         $this->require_proj();
-        return intval($this->proj->project["status"] ?? 0) > 0;
+        return intval($this->proj->project["status"] ?? 0) > 0 && intval($this->proj->project["draft_mode"]) > 0 && $GLOBALS["draft_preview_enabled"] == true;
     }
 
     private function get_salt()
