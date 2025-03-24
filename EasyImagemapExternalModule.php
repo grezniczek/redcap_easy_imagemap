@@ -7,7 +7,6 @@ use Files;
 use RCView;
 use Survey;
 use UserRights;
-use Vanderbilt\REDCap\Classes\ProjectDesigner;
 
 require_once "classes/ActionTagHelper.php";
 require_once "classes/InjectionHelper.php";
@@ -24,7 +23,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     #region Hooks
 
-    function redcap_data_entry_form($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $repeat_instance = 1)
+    function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
     {
         $this->init_proj($project_id);
         $this->init_config();
@@ -34,7 +33,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         }
     }
 
-    function redcap_survey_page($project_id, $record = NULL, $instrument, $event_id, $group_id = NULL, $survey_hash, $response_id = NULL, $repeat_instance = 1)
+    function redcap_survey_page($project_id, $record, $instrument, $event_id, $group_id, $survey_hash, $response_id, $repeat_instance)
     {
         $this->init_proj($project_id);
         $this->init_config();
