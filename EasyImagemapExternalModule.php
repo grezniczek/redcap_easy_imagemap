@@ -52,7 +52,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         }
     }
 
-    function redcap_every_page_top($project_id = null)
+    function redcap_every_page_top($project_id)
     {
         // Skip non-project context
         if ($project_id == null) return;
