@@ -187,13 +187,23 @@ function addMap(field, map, $img) {
  */
 function updateAreaClass(field, id, targetType, target, code) {
     log('Updating area', field, target, code);
+    let update = true;
     if (['yesno','truefalse','radio','select'].includes(targetType)) {
         // Unselect all for same target in case of mutually exclusive types
-        $('svg[data-field="' + field + '"] polygon[data-target="' + target + '"]').each(function() {
-            this.classList.remove('selected');
-        });
+        for (const areaIdx in config.maps[field].areas) {
+            const area = config.maps[field].areas[areaIdx];
+            if (area.target == target) {
+                const shape = $('#' + area.id)[0];
+                if (shape) shape.classList.remove('selected');
+            }
+        }
+        if (code == '') {
+            // Trigger reset link instead of updating
+            update = false;
+            $('input[name="' + target + '___radio"]').prop('checked', false);
+        }
     }
-    if ((id ?? '').length > 0) {
+    if (update && (id ?? '').length > 0) {
         setTimeout(function() {
             $('#' + id)[0].classList[checkTargetValue(targetType, target, code) ? 'add' : 'remove']('selected');
         }, 0);
@@ -283,6 +293,9 @@ function checkTargetValue(type, target, code) {
         break;
     }
     log('Checking target value for ' + target + '(' + code + ') (type: ' + type + '): [' + val + ']');
+    if (['yesno','truefalse','radio','select'].includes(type) && code == '') {
+        return false;
+    }
     return val == code;
 }
 
@@ -429,7 +442,6 @@ function twoWayRadioReset(target) {
             for (const id in twoWayRadioResetData[target][field]) {
                 const code = twoWayRadioResetData[target][field][id].code;
                 const type = twoWayRadioResetData[target][field][id].type;
-                document.forms['form'][target].value = '';
                 updateAreaClass(field, id, type, target, code);
             }
         }
