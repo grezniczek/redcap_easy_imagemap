@@ -83,7 +83,7 @@ function initialize(config_data, jsmo) {
         EIM_saveLocking = window['saveLocking'];
         window['saveLocking'] = function(lock_action, esign_action) { 
             EIM_saveLocking(lock_action, esign_action);
-            if (lock_action = '0') {
+            if (lock_action == '0') {
                 setTimeout(function() {
                     for (const mapField in config.maps) {
                         addInteractivity(mapField);
@@ -126,7 +126,8 @@ function setupAddMap(field, map, retry) {
  */
 function addMap(field, map, $img) {
     // Build <svg> to overlay on the image - we need to wrap the image first
-    const $wrapper = $img.wrap('<div class="eim-wrapper""></div>').parent();
+    const $wrapper = $img.parent().hasClass('eim-wrapper') ? $img.parent() : $img.wrap('<div class="eim-wrapper"></div>').parent();
+    $wrapper.find('svg[data-imagemap-id="eim-' + map.hash + '"]').remove();
     const svg = createSVG('svg', {
         width: map.bounds.width,
         height: map.bounds.height,
@@ -144,37 +145,118 @@ function addMap(field, map, $img) {
         const area = map.areas[areaIdx];
         area.id = id;
         const targetType = config.targets[area.target];
-        let shape = null;
-        if (area.poly) {
-            shape = createSVG('polygon', { 
-                points: area.poly,
-                id: id
-            });
-        }
-        // TODO: other shape types
+        let shape = createAreaShape(id, area);
         if (shape == null) {
             // No shape - remove
             map.areas.splice(areaIdx, 1);
         }
         else {
-            styles.push(
-                '#' + id + ' {stroke-width:1;stroke:orange;fill:orange;opacity:0.05;cursor:pointer;}\n' + 
-                '#' + id + ':hover {opacity:0.2;}\n' + 
-                '#' + id + '.selected {opacity:0.4;}\n'
-            );
+            styles.push(createAreaStyle(id, area.style));
             svg.append(shape);
             if (checkTargetValue(targetType, area.target, area.code)) {
                 shape.classList.add('selected');
             }
         }
     }
-    $('body').append('<style>' + styles.join('') + '</style>')
+    $('style[data-eim-style="' + map.hash + '"]').remove();
+    $('body').append('<style data-eim-style="' + map.hash + '">' + styles.join('') + '</style>')
     // Hide the SVG to prevent the overlay from showing while the image is already gone 
     $(window).on('beforeunload', function() {
         svg.remove();
     });
     addInteractivity(field);
     svg.style.display = 'block';
+}
+
+/**
+ * Creates the SVG element for a configured area.
+ * @param {string} id
+ * @param {Object} area
+ * @returns {SVGElement|null}
+ */
+function createAreaShape(id, area) {
+    const attrs = {
+        id: id,
+        'data-target': area.target,
+        'data-code': area.code,
+        'data-shape': ''
+    };
+    if (area.poly) {
+        attrs['points'] = area.poly;
+        attrs['data-shape'] = 'poly';
+        return createSVG('polygon', attrs);
+    }
+    if (area.rect) {
+        attrs['x'] = cleanNumber(area.rect.x);
+        attrs['y'] = cleanNumber(area.rect.y);
+        attrs['width'] = cleanNumber(area.rect.width);
+        attrs['height'] = cleanNumber(area.rect.height);
+        attrs['data-shape'] = 'rect';
+        return createSVG('rect', attrs);
+    }
+    if (area.ell) {
+        attrs['cx'] = cleanNumber(area.ell.cx);
+        attrs['cy'] = cleanNumber(area.ell.cy);
+        attrs['rx'] = cleanNumber(area.ell.rx);
+        attrs['ry'] = cleanNumber(area.ell.ry);
+        attrs['data-shape'] = 'ell';
+        return createSVG('ellipse', attrs);
+    }
+    return null;
+}
+
+/**
+ * Builds scoped CSS for area regular, hover, and selected states.
+ * @param {string} id
+ * @param {Object} style
+ * @returns {string}
+ */
+function createAreaStyle(id, style) {
+    const regular = styleState(style, 'regular', {
+        stroke: '#ffa500',
+        fill: '#ffa500',
+        fillOpacity: 0.05,
+        strokeOpacity: 1,
+        strokeWidth: 1,
+    });
+    const hover = styleState(style, 'hover', {
+        stroke: regular.stroke,
+        fill: regular.fill,
+        fillOpacity: 0.2,
+        strokeOpacity: regular.strokeOpacity,
+        strokeWidth: regular.strokeWidth,
+    });
+    const selected = styleState(style, 'selected', {
+        stroke: regular.stroke,
+        fill: regular.fill,
+        fillOpacity: 0.4,
+        strokeOpacity: regular.strokeOpacity,
+        strokeWidth: regular.strokeWidth,
+    });
+    return '#' + id + ' {' + cssFromStyle(regular) + 'cursor:pointer;touch-action:manipulation;}\n' +
+        '#' + id + ':hover {' + cssFromStyle(hover) + '}\n' +
+        '#' + id + '.selected {' + cssFromStyle(selected) + '}\n';
+}
+
+function styleState(style, state, defaults) {
+    const source = style && typeof style[state] == 'object' ? style[state] : {};
+    return {
+        stroke: cleanColor(source.stroke, defaults.stroke),
+        fill: cleanColor(source.fill, defaults.fill),
+        fillOpacity: cleanOpacity(source.fillOpacity, defaults.fillOpacity),
+        strokeOpacity: cleanOpacity(source.strokeOpacity, defaults.strokeOpacity),
+        strokeWidth: cleanNumber(source.strokeWidth, defaults.strokeWidth),
+    };
+}
+
+function cssFromStyle(style) {
+    return [
+        'stroke:' + style.stroke,
+        'fill:' + style.fill,
+        'fill-opacity:' + style.fillOpacity,
+        'stroke-opacity:' + style.strokeOpacity,
+        'stroke-width:' + style.strokeWidth,
+    ].join(';') + ';';
 }
 
 /**
@@ -364,6 +446,7 @@ function setTargetValue(field, id, type, target, code) {
             // In case this is an autocomplete dropdown, set the value of the text input
             const text = $select.find('option[value="' + code + '"]').text();
             $('#rc-ac-input_' + target).val(text);
+            $select.trigger('change');
             updateAreaClass(field, id, type, target, code);
         }
         break;
@@ -422,7 +505,7 @@ function setupTwoWayBinding(field, id, targetType, target, code) {
                     const $svg = $('svg[data-field="' + field + '"]');
                     const this_target = ($el.attr('name') ?? '').toString();
                     const this_code = ($el.val() ?? '').toString();
-                    const this_id = $svg.find('polygon[data-target="' + this_target + '"][data-code="' + this_code + '"]').attr('id') ?? ''
+                    const this_id = $svg.find('[data-target="' + this_target + '"][data-code="' + this_code + '"]').attr('id') ?? ''
                     updateAreaClass(field, this_id, targetType, this_target, this_code);
                 });
             }
@@ -481,6 +564,23 @@ function createSVG(tag, attrs) {
         el.setAttribute(key, attrs[key]);
     }
     return el;
+}
+
+function cleanColor(value, fallback) {
+    const color = (value ?? '').toString();
+    return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
+}
+
+function cleanOpacity(value, fallback) {
+    const number = Number.parseFloat(value);
+    if (Number.isNaN(number)) return fallback;
+    return Math.max(0, Math.min(1, number));
+}
+
+function cleanNumber(value, fallback = 0) {
+    const number = Number.parseFloat(value);
+    if (Number.isNaN(number)) return fallback;
+    return Math.round(number * 100) / 100;
 }
 
 /**

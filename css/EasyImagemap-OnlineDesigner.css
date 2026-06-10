@@ -30,11 +30,13 @@
     padding: 0.5rem 1rem;
     display: flex;
     gap: 15px;
+    min-height: 0;
 }
 .eim-editor .area-assignments {
     height: 100%;
     display: flex;
     flex-direction: column;
+    min-width: 330px;
 }
 .eim-editor .area-assignments-table {
     max-width: 460px;
@@ -42,6 +44,39 @@
     padding-right: 5px;
     overflow-y: scroll;
     flex-grow: 1;
+}
+.eim-editor .eim-style-panel {
+    border: 1px solid #d0d0d0;
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+    max-width: 460px;
+    background: #fff;
+}
+.eim-editor .eim-style-panel-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+.eim-editor .eim-style-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 8px;
+}
+.eim-editor .eim-style-grid label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    margin: 0;
+}
+.eim-editor .eim-style-grid input[type="number"] {
+    width: 72px;
+}
+.eim-editor .eim-style-grid input[type="color"] {
+    width: 42px;
+    height: 28px;
+    padding: 1px;
 }
 .eim-editor .area-style-sample {
     display: inline-block;
@@ -98,7 +133,7 @@ svg.eim-svg .anchor.active {
 svg.eim-svg .anchor.dragging {
     opacity: 0;
 }
-svg.eim-svg polygon {
+svg.eim-svg .edit-shape {
     stroke-width: 1;
     stroke:var(--shape-active-color);
     fill: var(--shape-active-color);
@@ -167,6 +202,7 @@ svg.eim-svg.preview .background:not(.selected):hover {
     position: relative;
     overflow: auto;
     padding: 0;
+    touch-action: none;
 }
 table.eim-areas td {
     vertical-align: middle;
@@ -191,4 +227,20 @@ table.eim-areas th.eim-col-target {
 }
 .eim-editor tr.dragging {
     opacity: .5;
+}
+@media (max-width: 900px) {
+    .eim-editor .modal-body {
+        flex-direction: column;
+    }
+    .eim-editor .area-assignments {
+        min-width: 0;
+        max-height: 45vh;
+    }
+    .eim-editor .area-assignments-table,
+    .eim-editor .eim-style-panel {
+        max-width: none;
+    }
+    #eim-container {
+        min-height: 45vh;
+    }
 }

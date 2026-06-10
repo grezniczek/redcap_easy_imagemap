@@ -1,11 +1,17 @@
 .eim-wrapper {
     position: relative;
     display: inline-grid;
-    width: max-content;
-    height: max-content;
+    max-width: 100%;
+}
+.eim-wrapper img {
+    grid-area: 1 / 1;
 }
 .eim-wrapper svg {
+    grid-area: 1 / 1;
     position: absolute;
     top: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
 }

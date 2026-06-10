@@ -10,6 +10,7 @@ use UserRights;
 
 require_once "classes/ActionTagHelper.php";
 require_once "classes/InjectionHelper.php";
+require_once "classes/MapDataHelper.php";
 
 class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 {
@@ -122,8 +123,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
                 if (($map["target"] ?? "") == "") continue; // Skip when no target is set
+                if (strpos($map["target"], ":") === false) {
+                    $warnings[] = "Invalid target '{$map["target"]}'. The corresponding map has been removed.";
+                    continue;
+                }
                 list($target_field, $code) = explode(":", $map["target"], 2);
-                $target_field_info = $this->get_field_metadata($target_field);
+                try {
+                    $target_field_info = $this->get_field_metadata($target_field);
+                }
+                catch (\Throwable $_) {
+                    $errors[] = "Target field '$target_field' does not exist. The corresponding map has been removed.";
+                    continue;
+                }
                 $target_type = $target_field_info["element_type"];
                 $target_enum = parseEnum($target_field_info["element_enum"]);
                 // Does the field exist?
@@ -135,7 +146,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             "mode" => $map["mode"] ?? "2-way",
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
-                            "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],
+                            "label" => empty($map["label"]) ? ($target_enum[$code] ?? "(empty/reset)") : $map["label"],
                             "style" => $map["style"] ?? [],
                         ];
                         $hasShape = false;
@@ -264,13 +275,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <button type="button" class="btn btn-outline-secondary text-dark" disabled>
                                     Shape
                                 </button>
-                                <button type="button" data-action="type-ell" class="btn btn-secondary" title="Set shape to ellipse">
+                                <button type="button" data-action="type-ell" class="btn btn-outline-secondary" title="Set shape to ellipse">
                                     <i class="fa-regular fa-circle"></i>
                                 </button>
                                 <button type="button" data-action="type-rect" class="btn btn-outline-secondary" title="Set shape to rectangle">
                                     <i class="fa-regular fa-square"></i>
                                 </button>
-                                <button type="button" data-action="type-poly" class="btn btn-outline-secondary" title="Set shape to polygon">
+                                <button type="button" data-action="type-poly" class="btn btn-secondary" title="Set shape to polygon">
                                     <i class="fa-solid fa-draw-polygon"></i>
                                 </button>
                             </div>
@@ -304,17 +315,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     <i class="fa-regular fa-pen-to-square"></i>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Settings">
-                                <button data-action="change-settings" class="btn btn-outline-secondary" title="Edit settings">
-                                    <i class="fa-solid fa-cog"></i>
-                                </button>
-                            </div>
                         </div>
                     </div>
                     <div class="modal-body">
                         <div class="area-assignments">
                             <div class="area-assignments-intro">
                                 Add or edit areas, then assign them to a target (field or choice).
+                            </div>
+                            <div class="eim-style-panel">
+                                <div class="eim-style-panel-title"><i class="fa-solid fa-palette"></i> Area style</div>
+                                <div class="eim-style-grid">
+                                    <label>Fill <input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500"></label>
+                                    <label>Stroke <input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500"></label>
+                                    <label>Fill opacity <input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"></label>
+                                    <label>Stroke opacity <input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"></label>
+                                    <label>Stroke width <input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"></label>
+                                </div>
                             </div>
                             <div class="area-assignments-table">
                                 <table class="table eim-areas table-sm">
@@ -412,7 +428,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         if (!array_key_exists($field_name, $qualified_fields)) {
             throw new Exception("Field '$field_name' is not marked with $tagname!");
         }
-        // Extract action tag parameter. The parameter is a JSON string that must be wrapped in single quotes!
+        // Extract action tag parameter.
         $tag = array_pop(ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG));
         $params = trim($tag["params"]);
         if ($params == "") $params = "{}";
@@ -454,12 +470,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
         }
+        $map_config = MapDataHelper::normalize($params);
         return [
             "fieldName" => $field_name,
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
-            "map" => empty($params) ? [] : $params["shapes"],
-            "bounds" => empty($params) ? [] : $params["bounds"],
+            "map" => $map_config["shapes"],
+            "bounds" => $map_config["bounds"],
             "assignables" => $assignables,
         ];
     }
@@ -504,7 +521,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $this->require_proj();
         $field_name = $data["fieldName"];
         $form_name = $data["formName"];
-        $map = $data["map"];
+        $map = $data["map"] ?? [];
         $qualified_fields = $this->get_qualifying_fields($form_name);
         if (!array_key_exists($field_name, $qualified_fields)) {
             throw new Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
@@ -512,15 +529,19 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $field_data = $this->get_field_metadata($field_name);
         $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
         $search = $at["match"];
-        $store = [
+        $store = MapDataHelper::normalize([
+            "version" => MapDataHelper::SCHEMA_VERSION,
             "shapes" => $map,
-            "bounds" => $data["bounds"],
-        ];
+            "bounds" => $data["bounds"] ?? [],
+        ]);
+        if (count($store["shapes"]) !== count($map)) {
+            throw new Exception("One or more areas have an invalid or incomplete shape. Complete or remove them before saving.");
+        }
+        $this->validate_map_config($form_name, $store);
         $json = json_encode($store, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"] . "=" . $json;
         $misc = trim(str_replace($search, $replace, $field_data["misc"]));
         $metadata_table = $this->get_project_metadata_table();
-        $field_name = db_escape($field_name);
         // Update field
         $sql = "UPDATE `$metadata_table` SET `misc` = ? WHERE `project_id` = ? AND `field_name` = ?";
         $q = db_query($sql, [$misc, $this->project_id, $field_name]);
@@ -528,6 +549,51 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             throw new Exception("Failed to update the database. Error: " . db_error());
         }
         return true;
+    }
+
+    private function validate_map_config($form_name, $store)
+    {
+        if (!is_array($store["bounds"] ?? null)) {
+            throw new Exception("Map bounds are missing or invalid.");
+        }
+        if (!isset($store["bounds"]["width"]) || !isset($store["bounds"]["height"]) || $store["bounds"]["width"] <= 0 || $store["bounds"]["height"] <= 0) {
+            throw new Exception("Map bounds must include a positive width and height.");
+        }
+
+        $form_fields = $this->get_form_fields($form_name);
+        foreach (($store["shapes"] ?? []) as $idx => $shape) {
+            $display_idx = $idx + 1;
+            $shape_type = MapDataHelper::getShapeType($shape);
+            if ($shape_type == "") {
+                throw new Exception("Area $display_idx has no valid shape.");
+            }
+            if (!in_array(($shape["mode"] ?? "2-way"), MapDataHelper::MODES, true)) {
+                throw new Exception("Area $display_idx has an invalid update mode.");
+            }
+            $target = $shape["target"] ?? "";
+            if ($target == "") {
+                continue;
+            }
+            if (strpos($target, ":") === false) {
+                throw new Exception("Area $display_idx has an invalid target.");
+            }
+            list($target_field, $code) = explode(":", $target, 2);
+            if (!in_array($target_field, $form_fields, true)) {
+                throw new Exception("Area $display_idx targets field '$target_field', which is not on this instrument.");
+            }
+            $target_field_info = $this->get_field_metadata($target_field);
+            $target_type = $target_field_info["element_type"];
+            if (!in_array($target_type, ["checkbox", "radio", "select", "yesno", "truefalse"], true)) {
+                throw new Exception("Area $display_idx targets '$target_field', which is not a supported choice field.");
+            }
+            $target_enum = parseEnum($target_field_info["element_enum"]);
+            if ($target_type == "checkbox" && $code == "") {
+                throw new Exception("Area $display_idx targets checkbox '$target_field' without a choice code.");
+            }
+            if ($code != "" && !array_key_exists($code, $target_enum)) {
+                throw new Exception("Area $display_idx targets '$target_field' with unknown choice code '$code'.");
+            }
+        }
     }
 
     private function get_project_forms()
