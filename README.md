@@ -43,6 +43,8 @@ Open **Configure Imagemap** from Online Designer. Add rows in the assignment tab
 
 Polygons are edited with point anchors. Circles are edited with a center handle and radius handle. Rectangles and ellipses are edited with a center handle plus width/radius and height/radius handles; dragging either axis handle rotates the shape and keeps the other axis aligned. Hold Shift while dragging an axis handle to keep rectangle width/height or ellipse radii in sync. Move mode can move one or more selected areas.
 
+Changing an existing area's shape type converts the geometry instead of deleting it. Rectangles convert to inscribed circles/ellipses; circles and ellipses convert to enclosing rectangles; polygons convert from or to an outer bounding shape. The designer asks for confirmation before morphing and can remember that choice in the browser.
+
 The style panel shows normal, hover, and selected states side by side. Select a state to edit fill, stroke, fill opacity, stroke opacity, and stroke width. The panel can copy the active state style, paste it to another state, sync the active state across all three states, or apply the active state style to selected areas.
 
 ## Data Entry And Surveys

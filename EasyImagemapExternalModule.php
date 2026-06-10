@@ -305,6 +305,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             </div>
                         </div>
                     </div>
+                    <div class="eim-shape-change-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-shape-change-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-shape-change-title">Change shape type?</h5>
+                            <p>
+                                The current area will be converted to the selected shape type. Existing placement will be preserved as closely as possible.
+                            </p>
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input" data-eim-shape-change-skip>
+                                <span class="form-check-label">Do not ask again in this browser</span>
+                            </label>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="shape-change-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+                                <button type="button" data-action="shape-change-confirm" class="btn btn-primary btn-sm">Convert shape</button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="modal-body">
                         <div class="area-assignments">
                             <div class="area-assignments-intro">

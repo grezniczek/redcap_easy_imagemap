@@ -31,8 +31,11 @@ let _shapeType = 'poly';
 let dndInitialized = false;
 let currentStyleState = 'regular';
 let styleClipboard = null;
+let pendingShapeChangeType = '';
 
 const moveStartPos = { x: 0, y: 0 };
+const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
+const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
 
 const STYLE_DEFAULTS = {
     regular: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.05, strokeOpacity: 1, strokeWidth: 1 },
@@ -444,6 +447,159 @@ function getShapeCenter(data) {
         x: cleanNumber(data.x) + cleanNumber(data.width) / 2,
         y: cleanNumber(data.y) + cleanNumber(data.height) / 2,
     };
+}
+
+function morphShapeData(fromType, data, toType) {
+    if (fromType == toType) return normalizeShapeData(toType, data);
+    if (toType == 'poly') return shapeToPolygon(fromType, data);
+    if (fromType == 'rect' && (toType == 'circle' || toType == 'ell')) {
+        const rect = normalizeShapeData('rect', data);
+        const center = getShapeCenter(rect);
+        if (toType == 'circle') {
+            return normalizeShapeData('circle', { cx: center.x, cy: center.y, r: Math.min(rect.width, rect.height) / 2 });
+        }
+        return normalizeShapeData('ell', { cx: center.x, cy: center.y, rx: rect.width / 2, ry: rect.height / 2, angle: rect.angle });
+    }
+    if (fromType == 'circle' && toType == 'ell') {
+        const circle = normalizeShapeData('circle', data);
+        return normalizeShapeData('ell', { cx: circle.cx, cy: circle.cy, rx: circle.r, ry: circle.r, angle: 0 });
+    }
+    if (fromType == 'ell' && toType == 'circle') {
+        const ell = normalizeShapeData('ell', data);
+        return normalizeShapeData('circle', { cx: ell.cx, cy: ell.cy, r: Math.max(ell.rx, ell.ry) });
+    }
+    const box = getOuterBox(fromType, data);
+    if (!box) return normalizeShapeData(toType, null);
+    if (toType == 'rect') return normalizeShapeData('rect', {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        angle: box.angle,
+    });
+    if (toType == 'circle') {
+        return normalizeShapeData('circle', {
+            cx: box.cx,
+            cy: box.cy,
+            r: Math.sqrt(Math.pow(box.width / 2, 2) + Math.pow(box.height / 2, 2)),
+        });
+    }
+    if (toType == 'ell') return normalizeShapeData('ell', {
+        cx: box.cx,
+        cy: box.cy,
+        rx: box.width / 2,
+        ry: box.height / 2,
+        angle: box.angle,
+    });
+    return normalizeShapeData(toType, null);
+}
+
+function shapeToPolygon(fromType, data) {
+    data = normalizeShapeData(fromType, data);
+    if (fromType == 'poly') return data;
+    if (fromType == 'rect') {
+        return pointsToPoly(orientedRectPoints(getShapeCenter(data), data.width / 2, data.height / 2, data.angle));
+    }
+    if (fromType == 'circle') {
+        return pointsToPoly(ellipsePoints({ x: data.cx, y: data.cy }, data.r, data.r, 0, 6));
+    }
+    if (fromType == 'ell') {
+        return pointsToPoly(ellipsePoints({ x: data.cx, y: data.cy }, data.rx, data.ry, data.angle, 6));
+    }
+    return '';
+}
+
+function getOuterBox(type, data) {
+    data = normalizeShapeData(type, data);
+    if (type == 'rect' && data.width > 0 && data.height > 0) {
+        const c = getShapeCenter(data);
+        return { x: data.x, y: data.y, width: data.width, height: data.height, cx: c.x, cy: c.y, angle: data.angle };
+    }
+    if (type == 'circle' && data.r > 0) {
+        return { x: data.cx - data.r, y: data.cy - data.r, width: data.r * 2, height: data.r * 2, cx: data.cx, cy: data.cy, angle: 0 };
+    }
+    if (type == 'ell' && data.rx > 0 && data.ry > 0) {
+        return { x: data.cx - data.rx, y: data.cy - data.ry, width: data.rx * 2, height: data.ry * 2, cx: data.cx, cy: data.cy, angle: data.angle };
+    }
+    if (type == 'poly' && data) {
+        return pointsOuterBox(polyToPoints(data));
+    }
+    return null;
+}
+
+function polyToPoints(poly) {
+    if (!poly) return [];
+    return poly.split(/\s+/).map(pair => {
+        const parts = pair.split(',');
+        return { x: cleanNumber(parts[0]), y: cleanNumber(parts[1]) };
+    }).filter(point => !Number.isNaN(point.x) && !Number.isNaN(point.y));
+}
+
+function pointsOuterBox(points) {
+    if (!points.length) return null;
+    const xs = points.map(point => point.x);
+    const ys = points.map(point => point.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    return {
+        x: minX,
+        y: minY,
+        width: width,
+        height: height,
+        cx: minX + width / 2,
+        cy: minY + height / 2,
+        angle: 0,
+    };
+}
+
+function orientedRectPoints(center, halfWidth, halfHeight, angle) {
+    const ux = pointUnit(angle);
+    const uy = pointUnit(angle + 90);
+    return [
+        addVectors(center, scaleVector(ux, -halfWidth), scaleVector(uy, -halfHeight)),
+        addVectors(center, scaleVector(ux, halfWidth), scaleVector(uy, -halfHeight)),
+        addVectors(center, scaleVector(ux, halfWidth), scaleVector(uy, halfHeight)),
+        addVectors(center, scaleVector(ux, -halfWidth), scaleVector(uy, halfHeight)),
+    ];
+}
+
+function ellipsePoints(center, rx, ry, angle, count) {
+    const ux = pointUnit(angle);
+    const uy = pointUnit(angle + 90);
+    const points = [];
+    for (let i = 0; i < count; i++) {
+        const theta = 2 * Math.PI * i / count;
+        points.push(addVectors(
+            center,
+            scaleVector(ux, Math.cos(theta) * rx),
+            scaleVector(uy, Math.sin(theta) * ry)
+        ));
+    }
+    return points;
+}
+
+function pointUnit(angle) {
+    const radians = angle * Math.PI / 180;
+    return { x: Math.cos(radians), y: Math.sin(radians) };
+}
+
+function scaleVector(vector, scale) {
+    return { x: vector.x * scale, y: vector.y * scale };
+}
+
+function addVectors() {
+    return Array.from(arguments).reduce((sum, vector) => ({
+        x: sum.x + vector.x,
+        y: sum.y + vector.y,
+    }), { x: 0, y: 0 });
+}
+
+function pointsToPoly(points) {
+    return points.map(point => `${cleanNumber(point.x)},${cleanNumber(point.y)}`).join(' ');
 }
 
 function normalizeStyle(style) {
@@ -1299,27 +1455,102 @@ function toggleSelectAll() {
 }
 
 function setShapeType(type) {
-    if (!['circle', 'ell', 'rect', 'poly'].includes(type)) return;
+    if (!SHAPE_TYPES.includes(type)) return;
     if (currentAreaId && editorData.areas[currentAreaId] && editorData.areas[currentAreaId].type != type) {
         const area = editorData.areas[currentAreaId];
-        if (areaHasData(area) && !confirm('Changing the shape type will clear this area shape. Continue?')) {
+        if (areaHasData(area) && !skipShapeChangeConfirm()) {
+            showShapeChangeDialog(type);
             return;
         }
-        area.type = type;
-        area.data = normalizeShapeData(type, null);
-        $svg.find('[data-id="' + currentAreaId + '"]').remove();
-        clearEditAnchors();
-        updateBackgroundShape(currentAreaId, true);
-        createEditShape(area);
+        applyShapeTypeChange(type);
+        return;
     }
+    setShapeTypeButtonState(type);
+}
+
+function setShapeTypeButtonState(type) {
     _shapeType = type;
     log('Shape type set to: ' + _shapeType);
-    ['circle', 'ell', 'rect', 'poly'].forEach(t => {
+    SHAPE_TYPES.forEach(t => {
         $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         if (t == _shapeType) {
             $('button[data-action="type-' + t + '"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
         }
     });
+}
+
+function applyShapeTypeChange(type) {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !SHAPE_TYPES.includes(type)) return;
+    storeShapeData(currentAreaId);
+    const area = editorData.areas[currentAreaId];
+    const fromType = area.type;
+    area.data = morphShapeData(fromType, area.data, type);
+    area.type = type;
+    setShapeTypeButtonState(type);
+    $svg.find('[data-id="' + currentAreaId + '"]').remove();
+    clearEditAnchors();
+    updateBackgroundShape(currentAreaId, true);
+    createEditShape(area);
+    const points = anchorsFromShape(area.type, area.data);
+    for (let point of points) {
+        const anchor = createSVG('circle', {
+            cx: point.x,
+            cy: point.y,
+            r: 4 / editorData.zoom,
+            'class': 'anchor',
+            'data-role': point.role ?? '',
+        });
+        svg.appendChild(anchor);
+        editorData.anchors.push(anchor);
+    }
+    activateAnchor(null);
+    updateEditShape();
+}
+
+function skipShapeChangeConfirm() {
+    try {
+        return window.localStorage.getItem(SHAPE_CHANGE_CONFIRM_KEY) == '1';
+    }
+    catch (_) {
+        return false;
+    }
+}
+
+function showShapeChangeDialog(type) {
+    pendingShapeChangeType = type;
+    const from = shapeLabel(editorData.areas[currentAreaId].type);
+    const to = shapeLabel(type);
+    const $dialog = $editor.find('.eim-shape-change-dialog');
+    $dialog.find('p').text(`${from} will be converted to ${to}. Existing placement will be preserved as closely as possible.`);
+    $dialog.find('[data-eim-shape-change-skip]').prop('checked', false);
+    $dialog.css('display', 'flex');
+}
+
+function hideShapeChangeDialog() {
+    pendingShapeChangeType = '';
+    $editor.find('.eim-shape-change-dialog').hide();
+}
+
+function confirmShapeChange() {
+    const type = pendingShapeChangeType;
+    const $dialog = $editor.find('.eim-shape-change-dialog');
+    if ($dialog.find('[data-eim-shape-change-skip]').prop('checked')) {
+        try {
+            window.localStorage.setItem(SHAPE_CHANGE_CONFIRM_KEY, '1');
+        }
+        catch (_) { }
+    }
+    hideShapeChangeDialog();
+    applyShapeTypeChange(type);
+}
+
+function shapeLabel(type) {
+    return {
+        circle: 'Circle',
+        ell: 'Ellipse',
+        rect: 'Rectangle',
+        poly: 'Polygon',
+    }[type] ?? 'Shape';
 }
 
 function getShapeType() {
@@ -1447,6 +1678,7 @@ function applyStyleChange(prop, value) {
         editorData.areas[id].style = style;
         updateBackgroundShape(id, id == currentAreaId);
     }
+    updateStyleControls();
 }
 
 function applyStyleToSelected() {
@@ -1459,6 +1691,7 @@ function applyStyleToSelected() {
         editorData.areas[id].style = style;
         updateBackgroundShape(id, id == currentAreaId);
     }
+    updateStyleControls();
 }
 
 function copyStyleState() {
@@ -1559,6 +1792,14 @@ function executeEditorAction(action, $row, event) {
         case 'type-rect':
         case 'type-ell': {
             setShapeType(action.replace('type-', ''));
+        }
+        break;
+        case 'shape-change-confirm': {
+            confirmShapeChange();
+        }
+        break;
+        case 'shape-change-cancel': {
+            hideShapeChangeDialog();
         }
         break;
         case 'style-regular':
