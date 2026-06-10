@@ -30,6 +30,7 @@ let assignableLabels = {};
 let _shapeType = 'poly';
 let dndInitialized = false;
 let currentStyleState = 'regular';
+let styleClipboard = null;
 
 const moveStartPos = { x: 0, y: 0 };
 
@@ -297,6 +298,8 @@ function areasFromMap(map) {
             type = 'poly';
         } else if (typeof item.rect != 'undefined') {
             type = 'rect';
+        } else if (typeof item.circle != 'undefined') {
+            type = 'circle';
         } else if (typeof item.ell != 'undefined') {
             type = 'ell';
         }
@@ -346,7 +349,7 @@ function createSVG(tag, attrs) {
 }
 
 function createShapeElement(type, data, attrs = {}) {
-    const tag = type == 'rect' ? 'rect' : (type == 'ell' ? 'ellipse' : 'polygon');
+    const tag = type == 'rect' ? 'rect' : (type == 'circle' ? 'circle' : (type == 'ell' ? 'ellipse' : 'polygon'));
     const el = createSVG(tag, attrs);
     setShapeAttributes(el, type, data);
     return el;
@@ -362,13 +365,31 @@ function setShapeAttributes(el, type, data) {
         el.setAttributeNS(null, 'y', data.y);
         el.setAttributeNS(null, 'width', data.width);
         el.setAttributeNS(null, 'height', data.height);
+        setShapeRotation(el, data);
+    }
+    else if (type == 'circle') {
+        el.setAttributeNS(null, 'cx', data.cx);
+        el.setAttributeNS(null, 'cy', data.cy);
+        el.setAttributeNS(null, 'r', data.r);
+        el.removeAttribute('transform');
     }
     else if (type == 'ell') {
         el.setAttributeNS(null, 'cx', data.cx);
         el.setAttributeNS(null, 'cy', data.cy);
         el.setAttributeNS(null, 'rx', data.rx);
         el.setAttributeNS(null, 'ry', data.ry);
+        setShapeRotation(el, data);
     }
+}
+
+function setShapeRotation(el, data) {
+    const angle = cleanNumber(data.angle);
+    if (!angle) {
+        el.removeAttribute('transform');
+        return;
+    }
+    const center = getShapeCenter(data);
+    el.setAttributeNS(null, 'transform', `rotate(${angle} ${center.x} ${center.y})`);
 }
 
 function normalizeShapeData(type, data) {
@@ -382,6 +403,15 @@ function normalizeShapeData(type, data) {
             y: cleanNumber(data.y),
             width: Math.max(0, cleanNumber(data.width)),
             height: Math.max(0, cleanNumber(data.height)),
+            angle: cleanNumber(data.angle),
+        };
+    }
+    if (type == 'circle') {
+        data = data && typeof data == 'object' ? data : {};
+        return {
+            cx: cleanNumber(data.cx),
+            cy: cleanNumber(data.cy),
+            r: Math.max(0, cleanNumber(data.r)),
         };
     }
     if (type == 'ell') {
@@ -391,6 +421,7 @@ function normalizeShapeData(type, data) {
             cy: cleanNumber(data.cy),
             rx: Math.max(0, cleanNumber(data.rx)),
             ry: Math.max(0, cleanNumber(data.ry)),
+            angle: cleanNumber(data.angle),
         };
     }
     return data;
@@ -399,9 +430,20 @@ function normalizeShapeData(type, data) {
 function translateShapeData(type, data, dx, dy) {
     data = normalizeShapeData(type, data);
     if (type == 'poly') return applyTranslation(data, dx, dy);
-    if (type == 'rect') return { x: data.x + dx, y: data.y + dy, width: data.width, height: data.height };
-    if (type == 'ell') return { cx: data.cx + dx, cy: data.cy + dy, rx: data.rx, ry: data.ry };
+    if (type == 'rect') return { x: data.x + dx, y: data.y + dy, width: data.width, height: data.height, angle: data.angle };
+    if (type == 'circle') return { cx: data.cx + dx, cy: data.cy + dy, r: data.r };
+    if (type == 'ell') return { cx: data.cx + dx, cy: data.cy + dy, rx: data.rx, ry: data.ry, angle: data.angle };
     return data;
+}
+
+function getShapeCenter(data) {
+    if (typeof data.cx != 'undefined' && typeof data.cy != 'undefined') {
+        return { x: cleanNumber(data.cx), y: cleanNumber(data.cy) };
+    }
+    return {
+        x: cleanNumber(data.x) + cleanNumber(data.width) / 2,
+        y: cleanNumber(data.y) + cleanNumber(data.height) / 2,
+    };
 }
 
 function normalizeStyle(style) {
@@ -478,20 +520,50 @@ function dataFromAnchors(type) {
         return points.length >= 3 ? points.join(' ') : points.join(' ');
     }
     if (type == 'rect' && editorData.anchors.length >= 2) {
-        const a = anchorPoint(editorData.anchors[0]);
-        const b = anchorPoint(editorData.anchors[1]);
+        const centerAnchor = findAnchorByRole('center');
+        const widthAnchor = findAnchorByRole('width');
+        const heightAnchor = findAnchorByRole('height');
+        if (!centerAnchor || !widthAnchor || !heightAnchor) return null;
+        const c = anchorPoint(centerAnchor);
+        const w = anchorPoint(widthAnchor);
+        const h = anchorPoint(heightAnchor);
+        const width = 2 * distance(c, w);
+        const height = 2 * distance(c, h);
         return normalizeShapeData('rect', {
-            x: Math.min(a.x, b.x),
-            y: Math.min(a.y, b.y),
-            width: Math.abs(b.x - a.x),
-            height: Math.abs(b.y - a.y),
+            x: c.x - width / 2,
+            y: c.y - height / 2,
+            width: width,
+            height: height,
+            angle: angleBetween(c, w),
+        });
+    }
+    if (type == 'circle' && editorData.anchors.length >= 2) {
+        const centerAnchor = findAnchorByRole('center');
+        const radiusAnchor = findAnchorByRole('radius');
+        if (!centerAnchor || !radiusAnchor) return null;
+        const c = anchorPoint(centerAnchor);
+        const r = distance(c, anchorPoint(radiusAnchor));
+        return normalizeShapeData('circle', {
+            cx: c.x,
+            cy: c.y,
+            r: r,
         });
     }
     if (type == 'ell' && editorData.anchors.length >= 3) {
-        const c = anchorPoint(editorData.anchors[0]);
-        const rx = Math.abs(anchorPoint(editorData.anchors[1]).x - c.x);
-        const ry = Math.abs(anchorPoint(editorData.anchors[2]).y - c.y);
-        return normalizeShapeData('ell', { cx: c.x, cy: c.y, rx: rx, ry: ry });
+        const centerAnchor = findAnchorByRole('center');
+        const rxAnchor = findAnchorByRole('radius-x');
+        const ryAnchor = findAnchorByRole('radius-y');
+        if (!centerAnchor || !rxAnchor || !ryAnchor) return null;
+        const c = anchorPoint(centerAnchor);
+        const x = anchorPoint(rxAnchor);
+        const y = anchorPoint(ryAnchor);
+        return normalizeShapeData('ell', {
+            cx: c.x,
+            cy: c.y,
+            rx: distance(c, x),
+            ry: distance(c, y),
+            angle: angleBetween(c, x),
+        });
     }
     return null;
 }
@@ -501,6 +573,67 @@ function anchorPoint(anchor) {
         x: Number.parseFloat(anchor.getAttribute('cx') ?? '0'),
         y: Number.parseFloat(anchor.getAttribute('cy') ?? '0'),
     };
+}
+
+function findAnchorByRole(role) {
+    return editorData.anchors.find(anchor => anchor.dataset.role == role) ?? null;
+}
+
+function setAnchorPoint(anchor, point) {
+    anchor.setAttributeNS(null, 'cx', cleanNumber(point.x));
+    anchor.setAttributeNS(null, 'cy', cleanNumber(point.y));
+}
+
+function distance(a, b) {
+    return Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+}
+
+function angleBetween(a, b) {
+    return cleanNumber(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI);
+}
+
+function pointFromAngle(center, angle, length) {
+    const radians = angle * Math.PI / 180;
+    return {
+        x: center.x + Math.cos(radians) * length,
+        y: center.y + Math.sin(radians) * length,
+    };
+}
+
+function syncOrientedHandles(constrain) {
+    if (!currentAreaId || !currentAnchor) return;
+    const area = editorData.areas[currentAreaId];
+    if (!area || area.type == 'poly') return;
+
+    const centerAnchor = findAnchorByRole('center');
+    if (!centerAnchor) return;
+    const center = anchorPoint(centerAnchor);
+    const role = currentAnchor.dataset.role;
+
+    if (area.type == 'circle') {
+        return;
+    }
+
+    const primaryRole = area.type == 'rect' ? 'width' : 'radius-x';
+    const secondaryRole = area.type == 'rect' ? 'height' : 'radius-y';
+    const primaryAnchor = findAnchorByRole(primaryRole);
+    const secondaryAnchor = findAnchorByRole(secondaryRole);
+    if (!primaryAnchor || !secondaryAnchor) return;
+
+    if (role == primaryRole) {
+        const primary = anchorPoint(primaryAnchor);
+        const angle = angleBetween(center, primary);
+        const primaryLength = distance(center, primary);
+        const secondaryLength = constrain ? primaryLength : distance(center, anchorPoint(secondaryAnchor));
+        setAnchorPoint(secondaryAnchor, pointFromAngle(center, angle + 90, secondaryLength));
+    }
+    else if (role == secondaryRole) {
+        const secondary = anchorPoint(secondaryAnchor);
+        const angle = angleBetween(center, secondary) - 90;
+        const secondaryLength = distance(center, secondary);
+        const primaryLength = constrain ? secondaryLength : distance(center, anchorPoint(primaryAnchor));
+        setAnchorPoint(primaryAnchor, pointFromAngle(center, angle, primaryLength));
+    }
 }
 
 function activateAnchor(anchor) {
@@ -851,6 +984,7 @@ function handleSVGEvent(e) {
             // Update coordinates of anchor
             currentAnchor.setAttributeNS(null, 'cx', pos.x);
             currentAnchor.setAttributeNS(null, 'cy', pos.y);
+            syncOrientedHandles(e.shiftKey);
             updateEditShape();
             return;
         }
@@ -858,8 +992,18 @@ function handleSVGEvent(e) {
         // End dragging of an anchor
         if (type == 'pointerup') {
             if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
-                // Outside of edit area - delete anchor
-                removeAnchor(currentAnchor);
+                if (editorData.areas[currentAreaId]?.type == 'poly') {
+                    // Outside of edit area - delete polygon anchor
+                    removeAnchor(currentAnchor);
+                }
+                else {
+                    setAnchorPoint(currentAnchor, {
+                        x: Math.max(0, Math.min(editorData.bounds.width - 1, pos.x)),
+                        y: Math.max(0, Math.min(editorData.bounds.height - 1, pos.y)),
+                    });
+                    syncOrientedHandles(e.shiftKey);
+                    activateAnchor(currentAnchor);
+                }
             }
             else {
                 // Inside of edit area - make this anchor the 'active' one
@@ -960,10 +1104,13 @@ function handleSVGEvent(e) {
 function seedShapeAt(id, pos) {
     const area = editorData.areas[id];
     if (area.type == 'rect') {
-        area.data = normalizeShapeData('rect', { x: pos.x, y: pos.y, width: 60, height: 40 });
+        area.data = normalizeShapeData('rect', { x: pos.x - 30, y: pos.y - 20, width: 60, height: 40, angle: 0 });
+    }
+    else if (area.type == 'circle') {
+        area.data = normalizeShapeData('circle', { cx: pos.x, cy: pos.y, r: 30 });
     }
     else if (area.type == 'ell') {
-        area.data = normalizeShapeData('ell', { cx: pos.x, cy: pos.y, rx: 35, ry: 25 });
+        area.data = normalizeShapeData('ell', { cx: pos.x, cy: pos.y, rx: 35, ry: 25, angle: 0 });
     }
     updateBackgroundShape(id, true);
 }
@@ -1001,7 +1148,7 @@ function updateBackgroundShape(id, editing = false) {
 }
 
 function shapeTag(type) {
-    return type == 'rect' ? 'rect' : (type == 'ell' ? 'ellipse' : 'polygon');
+    return type == 'rect' ? 'rect' : (type == 'circle' ? 'circle' : (type == 'ell' ? 'ellipse' : 'polygon'));
 }
 
 function applyDesignerShapeStyle(el, area, state) {
@@ -1018,14 +1165,11 @@ function updateStyleSample(id) {
     if (!area) return;
     const style = normalizeStyle(area.style ?? {});
     const $sample = $('tr[data-area-id="' + id + '"]').find('.area-style-sample');
-    const selected = editorData.selection && editorData.selection.includes(id);
-    const state = selected ? 'selected' : 'regular';
-    $sample.css({
-        backgroundColor: style[state].fill,
-        borderColor: style[state].stroke,
-        borderWidth: Math.max(1, style[state].strokeWidth) + 'px',
-        opacity: style[state].fillOpacity,
-        borderStyle: 'solid',
+    $sample.empty();
+    ['regular', 'hover', 'selected'].forEach(state => {
+        const $swatch = $('<span></span>');
+        applyStyleToSwatch($swatch, style[state]);
+        $sample.append($swatch);
     });
 }
 
@@ -1108,17 +1252,27 @@ function anchorsFromShape(type, data) {
     }
     if (type == 'rect') {
         if (!data.width || !data.height) return [];
+        const c = getShapeCenter(data);
         return [
-            { x: data.x, y: data.y, role: 'corner-a' },
-            { x: data.x + data.width, y: data.y + data.height, role: 'corner-b' },
+            { x: c.x, y: c.y, role: 'center' },
+            Object.assign(pointFromAngle(c, data.angle, data.width / 2), { role: 'width' }),
+            Object.assign(pointFromAngle(c, data.angle + 90, data.height / 2), { role: 'height' }),
+        ];
+    }
+    if (type == 'circle') {
+        if (!data.r) return [];
+        return [
+            { x: data.cx, y: data.cy, role: 'center' },
+            { x: data.cx + data.r, y: data.cy, role: 'radius' },
         ];
     }
     if (type == 'ell') {
         if (!data.rx || !data.ry) return [];
+        const c = { x: data.cx, y: data.cy };
         return [
-            { x: data.cx, y: data.cy, role: 'center' },
-            { x: data.cx + data.rx, y: data.cy, role: 'radius-x' },
-            { x: data.cx, y: data.cy + data.ry, role: 'radius-y' },
+            { x: c.x, y: c.y, role: 'center' },
+            Object.assign(pointFromAngle(c, data.angle, data.rx), { role: 'radius-x' }),
+            Object.assign(pointFromAngle(c, data.angle + 90, data.ry), { role: 'radius-y' }),
         ];
     }
     return [];
@@ -1145,7 +1299,7 @@ function toggleSelectAll() {
 }
 
 function setShapeType(type) {
-    if (!['ell', 'rect', 'poly'].includes(type)) return;
+    if (!['circle', 'ell', 'rect', 'poly'].includes(type)) return;
     if (currentAreaId && editorData.areas[currentAreaId] && editorData.areas[currentAreaId].type != type) {
         const area = editorData.areas[currentAreaId];
         if (areaHasData(area) && !confirm('Changing the shape type will clear this area shape. Continue?')) {
@@ -1160,7 +1314,7 @@ function setShapeType(type) {
     }
     _shapeType = type;
     log('Shape type set to: ' + _shapeType);
-    ['ell', 'rect', 'poly'].forEach(t => {
+    ['circle', 'ell', 'rect', 'poly'].forEach(t => {
         $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         if (t == _shapeType) {
             $('button[data-action="type-' + t + '"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
@@ -1175,6 +1329,7 @@ function getShapeType() {
 function areaHasData(area) {
     if (area.type == 'poly') return typeof area.data == 'string' && area.data.trim() != '';
     if (area.type == 'rect') return area.data && area.data.width > 0 && area.data.height > 0;
+    if (area.type == 'circle') return area.data && area.data.r > 0;
     if (area.type == 'ell') return area.data && area.data.rx > 0 && area.data.ry > 0;
     return false;
 }
@@ -1239,8 +1394,8 @@ function setStyleState(state) {
     if (!['regular', 'hover', 'selected'].includes(state)) return;
     currentStyleState = state;
     ['regular', 'hover', 'selected'].forEach(s => {
-        const $btn = $('button[data-action="style-' + s + '"]');
-        $btn.toggleClass('btn-primary', s == state).toggleClass('btn-outline-primary', s != state);
+        const $btn = $('.eim-style-state[data-action="style-' + s + '"]');
+        $btn.toggleClass('active', s == state);
     });
     updateStyleControls();
 }
@@ -1249,10 +1404,30 @@ function updateStyleControls() {
     const area = editorData && currentAreaId ? editorData.areas[currentAreaId] : null;
     const style = normalizeStyle(area ? area.style : {});
     const stateStyle = style[currentStyleState];
+    ['regular', 'hover', 'selected'].forEach(state => {
+        applyStyleToSwatch($editor.find('[data-style-state-preview="' + state + '"]'), style[state]);
+    });
     for (const prop of ['fill', 'stroke', 'fillOpacity', 'strokeOpacity', 'strokeWidth']) {
         $editor.find('[data-style-prop="' + prop + '"]').val(stateStyle[prop]);
     }
     updateModeButtons();
+}
+
+function applyStyleToSwatch($swatch, style) {
+    $swatch.css({
+        backgroundColor: hexToRgba(style.fill, style.fillOpacity),
+        borderColor: hexToRgba(style.stroke, style.strokeOpacity),
+        borderWidth: Math.max(1, cleanNumber(style.strokeWidth)) + 'px',
+        borderStyle: 'solid',
+    });
+}
+
+function hexToRgba(hex, opacity) {
+    const color = cleanColor(hex, '#000000').replace('#', '');
+    const r = parseInt(color.substring(0, 2), 16);
+    const g = parseInt(color.substring(2, 4), 16);
+    const b = parseInt(color.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${cleanOpacity(opacity, 1)})`;
 }
 
 function applyStyleChange(prop, value) {
@@ -1284,6 +1459,40 @@ function applyStyleToSelected() {
         editorData.areas[id].style = style;
         updateBackgroundShape(id, id == currentAreaId);
     }
+}
+
+function copyStyleState() {
+    const area = editorData && currentAreaId ? editorData.areas[currentAreaId] : null;
+    if (!area) return;
+    styleClipboard = Object.assign({}, normalizeStyle(area.style ?? {})[currentStyleState]);
+}
+
+function pasteStyleState() {
+    if (!styleClipboard) return;
+    const ids = currentAreaId ? [currentAreaId] : editorData.selection;
+    ids.forEach(id => {
+        if (!editorData.areas[id]) return;
+        const style = normalizeStyle(editorData.areas[id].style ?? {});
+        style[currentStyleState] = Object.assign({}, styleClipboard);
+        editorData.areas[id].style = style;
+        updateBackgroundShape(id, id == currentAreaId);
+    });
+    updateStyleControls();
+}
+
+function syncStyleStates() {
+    const ids = currentAreaId ? [currentAreaId] : editorData.selection;
+    ids.forEach(id => {
+        if (!editorData.areas[id]) return;
+        const style = normalizeStyle(editorData.areas[id].style ?? {});
+        const source = Object.assign({}, style[currentStyleState]);
+        ['regular', 'hover', 'selected'].forEach(state => {
+            style[state] = Object.assign({}, source);
+        });
+        editorData.areas[id].style = style;
+        updateBackgroundShape(id, id == currentAreaId);
+    });
+    updateStyleControls();
 }
 
 function setAreaMode(mode, ids) {
@@ -1345,6 +1554,7 @@ function executeEditorAction(action, $row, event) {
             setMode('move');
         }
         break;
+        case 'type-circle':
         case 'type-poly':
         case 'type-rect':
         case 'type-ell': {
@@ -1359,6 +1569,18 @@ function executeEditorAction(action, $row, event) {
         break;
         case 'style-apply-to-selected': {
             applyStyleToSelected();
+        }
+        break;
+        case 'style-copy': {
+            copyStyleState();
+        }
+        break;
+        case 'style-paste': {
+            pasteStyleState();
+        }
+        break;
+        case 'style-sync-states': {
+            syncStyleStates();
         }
         break;
         case 'mode-two-way': {

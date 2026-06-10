@@ -150,7 +150,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             "style" => $map["style"] ?? [],
                         ];
                         $hasShape = false;
-                        foreach (['poly', 'rect', 'ell'] as $shape) {
+                        foreach (['poly', 'rect', 'circle', 'ell'] as $shape) {
                             if (isset($map[$shape]) && !empty($map[$shape])) {
                                 $area[$shape] = $map[$shape];
                                 $hasShape = true;
@@ -275,29 +275,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                 <button type="button" class="btn btn-outline-secondary text-dark" disabled>
                                     Shape
                                 </button>
-                                <button type="button" data-action="type-ell" class="btn btn-outline-secondary" title="Set shape to ellipse">
+                                <button type="button" data-action="type-circle" class="btn btn-outline-secondary" title="Set shape to circle">
                                     <i class="fa-regular fa-circle"></i>
+                                </button>
+                                <button type="button" data-action="type-ell" class="btn btn-outline-secondary" title="Set shape to ellipse">
+                                    <i class="fa-solid fa-circle-notch"></i>
                                 </button>
                                 <button type="button" data-action="type-rect" class="btn btn-outline-secondary" title="Set shape to rectangle">
                                     <i class="fa-regular fa-square"></i>
                                 </button>
                                 <button type="button" data-action="type-poly" class="btn btn-secondary" title="Set shape to polygon">
                                     <i class="fa-solid fa-draw-polygon"></i>
-                                </button>
-                            </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Styling">
-                                <button class="btn btn-outline-primary text-dark" disabled>Style</button>
-                                <button data-action="style-regular" class="btn btn-outline-primary" title="Set regular style">
-                                    <i class="fa-regular fa-square"></i>
-                                </button>
-                                <button data-action="style-hover" class="btn btn-outline-primary" title="Set style on hover">
-                                    <i class="fa-solid fa-arrow-pointer"></i>
-                                </button>
-                                <button data-action="style-selected" class="btn btn-outline-primary" title="Set style on selection">
-                                    <i class="fa-solid fa-square-check"></i>
-                                </button>
-                                <button data-action="style-apply-to-selected" class="btn btn-outline-primary" title="Apply to selected targets">
-                                    <i class="fa-regular fa-pen-to-square"></i>
                                 </button>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="Update mode">
@@ -324,12 +312,40 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             </div>
                             <div class="eim-style-panel">
                                 <div class="eim-style-panel-title"><i class="fa-solid fa-palette"></i> Area style</div>
+                                <div class="eim-style-states">
+                                    <button type="button" data-action="style-regular" class="eim-style-state active" title="Edit normal style">
+                                        <span class="eim-state-label">Normal</span>
+                                        <span class="eim-state-swatch" data-style-state-preview="regular"></span>
+                                    </button>
+                                    <button type="button" data-action="style-hover" class="eim-style-state" title="Edit hover style">
+                                        <span class="eim-state-label">Hover</span>
+                                        <span class="eim-state-swatch" data-style-state-preview="hover"></span>
+                                    </button>
+                                    <button type="button" data-action="style-selected" class="eim-style-state" title="Edit selected style">
+                                        <span class="eim-state-label">Selected</span>
+                                        <span class="eim-state-swatch" data-style-state-preview="selected"></span>
+                                    </button>
+                                </div>
                                 <div class="eim-style-grid">
                                     <label>Fill <input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500"></label>
                                     <label>Stroke <input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500"></label>
                                     <label>Fill opacity <input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"></label>
                                     <label>Stroke opacity <input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"></label>
                                     <label>Stroke width <input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"></label>
+                                </div>
+                                <div class="eim-style-actions btn-group btn-group-sm" role="group" aria-label="Style copy and sync">
+                                    <button type="button" data-action="style-copy" class="btn btn-outline-secondary" title="Copy active state style">
+                                        <i class="fa-regular fa-copy"></i>
+                                    </button>
+                                    <button type="button" data-action="style-paste" class="btn btn-outline-secondary" title="Paste copied style to active state">
+                                        <i class="fa-regular fa-paste"></i>
+                                    </button>
+                                    <button type="button" data-action="style-sync-states" class="btn btn-outline-secondary" title="Copy active state style to all three states">
+                                        <i class="fa-solid fa-link"></i>
+                                    </button>
+                                    <button type="button" data-action="style-apply-to-selected" class="btn btn-outline-secondary" title="Apply active state style to selected areas">
+                                        <i class="fa-regular fa-pen-to-square"></i>
+                                    </button>
                                 </div>
                             </div>
                             <div class="area-assignments-table">

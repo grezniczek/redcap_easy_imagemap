@@ -192,7 +192,15 @@ function createAreaShape(id, area) {
         attrs['width'] = cleanNumber(area.rect.width);
         attrs['height'] = cleanNumber(area.rect.height);
         attrs['data-shape'] = 'rect';
+        setRotation(attrs, area.rect);
         return createSVG('rect', attrs);
+    }
+    if (area.circle) {
+        attrs['cx'] = cleanNumber(area.circle.cx);
+        attrs['cy'] = cleanNumber(area.circle.cy);
+        attrs['r'] = cleanNumber(area.circle.r);
+        attrs['data-shape'] = 'circle';
+        return createSVG('circle', attrs);
     }
     if (area.ell) {
         attrs['cx'] = cleanNumber(area.ell.cx);
@@ -200,9 +208,18 @@ function createAreaShape(id, area) {
         attrs['rx'] = cleanNumber(area.ell.rx);
         attrs['ry'] = cleanNumber(area.ell.ry);
         attrs['data-shape'] = 'ell';
+        setRotation(attrs, area.ell);
         return createSVG('ellipse', attrs);
     }
     return null;
+}
+
+function setRotation(attrs, data) {
+    const angle = cleanNumber(data.angle);
+    if (!angle) return;
+    const cx = data.cx ?? (cleanNumber(data.x) + cleanNumber(data.width) / 2);
+    const cy = data.cy ?? (cleanNumber(data.y) + cleanNumber(data.height) / 2);
+    attrs['transform'] = 'rotate(' + angle + ' ' + cleanNumber(cx) + ' ' + cleanNumber(cy) + ')';
 }
 
 /**

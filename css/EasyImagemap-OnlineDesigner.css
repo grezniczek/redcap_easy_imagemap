@@ -57,6 +57,34 @@
     font-weight: 600;
     margin-bottom: 6px;
 }
+.eim-editor .eim-style-states {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.eim-editor .eim-style-state {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: stretch;
+    border: 1px solid #c8c8c8;
+    border-radius: 4px;
+    background: #fff;
+    padding: 5px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.eim-editor .eim-style-state.active {
+    border-color: var(--bs-primary, #0d6efd);
+    box-shadow: inset 0 0 0 1px var(--bs-primary, #0d6efd);
+}
+.eim-editor .eim-state-swatch {
+    height: 28px;
+    border: 1px solid #ffa500;
+    background: #ffa500;
+    display: block;
+}
 .eim-editor .eim-style-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -78,12 +106,21 @@
     height: 28px;
     padding: 1px;
 }
+.eim-editor .eim-style-actions {
+    margin-top: 8px;
+}
 .eim-editor .area-style-sample {
-    display: inline-block;
-    vertical-align: text-bottom;
-    width: 20px;
+    display: inline-grid;
+    grid-template-columns: repeat(3, 14px);
+    gap: 2px;
+    vertical-align: middle;
+    width: auto;
     height: 20px;
-    background-color: rgb(180, 180, 180);
+    background-color: transparent;
+}
+.eim-editor .area-style-sample span {
+    border: 1px solid #aaa;
+    background: #ddd;
 }
 .eim-editor .field-name {
     font-weight: bold;

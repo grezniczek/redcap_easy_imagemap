@@ -22,11 +22,12 @@ The module can read empty parameters, current `shapes`/`bounds` JSON, and the ol
 
 ## Supported Areas
 
-The designer supports three area types:
+The designer supports four area types:
 
 - Polygon: `{ "poly": "x,y x,y x,y" }`
-- Rectangle: `{ "rect": { "x": 10, "y": 20, "width": 100, "height": 80 } }`
-- Ellipse: `{ "ell": { "cx": 60, "cy": 60, "rx": 40, "ry": 25 } }`
+- Rectangle: `{ "rect": { "x": 10, "y": 20, "width": 100, "height": 80, "angle": 0 } }`
+- Circle: `{ "circle": { "cx": 60, "cy": 60, "r": 40 } }`
+- Ellipse: `{ "ell": { "cx": 60, "cy": 60, "rx": 40, "ry": 25, "angle": 0 } }`
 
 Each area may also include:
 
@@ -40,7 +41,9 @@ Each area may also include:
 
 Open **Configure Imagemap** from Online Designer. Add rows in the assignment table, choose a shape type, draw or edit the area on the image, and assign the row to a target field or choice.
 
-Polygons are edited with point anchors. Rectangles are edited with two corner handles. Ellipses are edited with a center handle plus horizontal and vertical radius handles. Move mode can move one or more selected areas. The style panel edits regular, hover, and selected states, and can copy the active style state to selected areas.
+Polygons are edited with point anchors. Circles are edited with a center handle and radius handle. Rectangles and ellipses are edited with a center handle plus width/radius and height/radius handles; dragging either axis handle rotates the shape and keeps the other axis aligned. Hold Shift while dragging an axis handle to keep rectangle width/height or ellipse radii in sync. Move mode can move one or more selected areas.
+
+The style panel shows normal, hover, and selected states side by side. Select a state to edit fill, stroke, fill opacity, stroke opacity, and stroke width. The panel can copy the active state style, paste it to another state, sync the active state across all three states, or apply the active state style to selected areas.
 
 ## Data Entry And Surveys
 

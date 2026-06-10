@@ -91,6 +91,13 @@ class MapDataHelper
             return $item;
         }
 
+        if (isset($shape["circle"]) && is_array($shape["circle"])) {
+            $circle = self::normalizeCircle($shape["circle"]);
+            if ($circle === null) return null;
+            $item["circle"] = $circle;
+            return $item;
+        }
+
         if (isset($shape["ell"]) && is_array($shape["ell"])) {
             $ell = self::normalizeEllipse($shape["ell"]);
             if ($ell === null) return null;
@@ -139,7 +146,7 @@ class MapDataHelper
 
     public static function getShapeType($shape)
     {
-        foreach (["poly", "rect", "ell"] as $type) {
+        foreach (["poly", "rect", "circle", "ell"] as $type) {
             if (isset($shape[$type]) && !empty($shape[$type])) return $type;
         }
         return "";
@@ -179,6 +186,20 @@ class MapDataHelper
             "y" => self::formatNumber($y),
             "width" => self::formatNumber($width),
             "height" => self::formatNumber($height),
+            "angle" => self::formatNumber($rect["angle"] ?? 0),
+        ];
+    }
+
+    private static function normalizeCircle($circle)
+    {
+        $cx = floatval($circle["cx"] ?? 0);
+        $cy = floatval($circle["cy"] ?? 0);
+        $r = floatval($circle["r"] ?? 0);
+        if ($r <= 0) return null;
+        return [
+            "cx" => self::formatNumber($cx),
+            "cy" => self::formatNumber($cy),
+            "r" => self::formatNumber($r),
         ];
     }
 
@@ -194,6 +215,7 @@ class MapDataHelper
             "cy" => self::formatNumber($cy),
             "rx" => self::formatNumber($rx),
             "ry" => self::formatNumber($ry),
+            "angle" => self::formatNumber($ell["angle"] ?? 0),
         ];
     }
 

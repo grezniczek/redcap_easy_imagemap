@@ -37,7 +37,7 @@ $canonical = MapDataHelper::normalize([
     "bounds" => ["width" => 100, "height" => 80],
     "shapes" => [
         [
-            "rect" => ["x" => 1, "y" => 2, "width" => 30, "height" => 40],
+            "rect" => ["x" => 1, "y" => 2, "width" => 30, "height" => 40, "angle" => 15],
             "target" => "field:a",
             "mode" => "from-target",
             "style" => [
@@ -51,13 +51,20 @@ $canonical = MapDataHelper::normalize([
             ],
         ],
         [
-            "ell" => ["cx" => 10, "cy" => 20, "rx" => 5, "ry" => 6],
+            "circle" => ["cx" => 25, "cy" => 30, "r" => 12],
+            "target" => "field:c",
+        ],
+        [
+            "ell" => ["cx" => 10, "cy" => 20, "rx" => 5, "ry" => 6, "angle" => 30],
             "target" => "field:b",
         ],
     ],
 ]);
 assert_true(MapDataHelper::getShapeType($canonical["shapes"][0]) === "rect", "Rectangles are detected.");
-assert_true(MapDataHelper::getShapeType($canonical["shapes"][1]) === "ell", "Ellipses are detected.");
+assert_true($canonical["shapes"][0]["rect"]["angle"] === 15, "Rectangle angles are preserved.");
+assert_true(MapDataHelper::getShapeType($canonical["shapes"][1]) === "circle", "Circles are detected.");
+assert_true(MapDataHelper::getShapeType($canonical["shapes"][2]) === "ell", "Ellipses are detected.");
+assert_true($canonical["shapes"][2]["ell"]["angle"] === 30, "Ellipse angles are preserved.");
 assert_true($canonical["shapes"][0]["style"]["selected"]["fill"] === "#ff0000", "Styles are preserved.");
 
 $tags = ActionTagHelper::parseActionTags('@EASYIMAGEMAP={"version":1,"bounds":{"width":1,"height":1},"shapes":[]} @OTHER=1', '@EASYIMAGEMAP');
