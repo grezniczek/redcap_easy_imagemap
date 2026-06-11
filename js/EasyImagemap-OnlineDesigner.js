@@ -1600,8 +1600,7 @@ function addTableRow(id, afterId = '') {
     const $select = $row.find('select');
     $select.html($selectTemplate.html());
     $select.val(editorData.areas[id].target ?? '') ;
-    // @ts-ignore
-    $select.selectpicker();
+    initializeAssignableSelect($select);
     if (afterId == '') {
         $editor.find('tbody.area-list').append($row);
     }
@@ -1611,6 +1610,25 @@ function addTableRow(id, afterId = '') {
     // Add background shape
     updateBackgroundShape(id);
     updateStyleSample(id);
+}
+
+function initializeAssignableSelect($select) {
+    // Render the menu outside the scrollable assignments table so it can overlap the style panel cleanly.
+    $select.on('show.bs.select shown.bs.select loaded.bs.select rendered.bs.select', function() {
+        tagAssignableSelectpickerContainer($select);
+    });
+    // @ts-ignore
+    $select.selectpicker({
+        container: 'body'
+    });
+    tagAssignableSelectpickerContainer($select);
+}
+
+function tagAssignableSelectpickerContainer($select) {
+    const picker = $select.data('selectpicker');
+    if (picker && picker.$bsContainer) {
+        picker.$bsContainer.addClass('eim-selectpicker-container');
+    }
 }
 
 /**
@@ -1753,7 +1771,10 @@ function removeAreaById(id) {
     if (!id || !editorData.areas[id]) return;
     if (id == currentAreaId) clearCurrentArea();
     delete editorData.areas[id];
-    $('tr[data-area-id="' + id + '"]').remove();
+    const $row = $('tr[data-area-id="' + id + '"]');
+    // @ts-ignore
+    $row.find('select.assignables').selectpicker('destroy');
+    $row.remove();
     $svg.find('[data-id="' + id + '"]').remove();
     removeFromSelection([id]);
 }
@@ -1924,6 +1945,8 @@ function executeEditorAction(action, $row, event) {
             // Reset
             applyZoom('zoom1x');
             editorData = null;
+            // @ts-ignore
+            $editor.find('select.assignables').selectpicker('destroy');
             $editor.find('.empty-on-close').children().remove();
             $editor.find('.remove-on-close').remove();
             // Prevent focus error

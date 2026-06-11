@@ -177,6 +177,12 @@ tr.area .form-check {
 .bootstrap-select .dropdown-menu li a:hover {
     font-size: 13px;
 }
+body > .bs-container.eim-selectpicker-container {
+    z-index: 1065;
+}
+body > .bs-container.eim-selectpicker-container .dropdown-menu {
+    z-index: 1066;
+}
 svg.eim-svg {
     position: absolute;
     left: 0;
