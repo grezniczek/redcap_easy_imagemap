@@ -1,6 +1,4 @@
 // Easy Imagemap EM
-// Dr. Günther Rezniczek, Ruhr-Universität Bochum, Marien Hospital Herne
-// @ts-check
 ;(function() {
 
 // @ts-ignore
@@ -1899,13 +1897,11 @@ function executeEditorAction(action, $row, event) {
             const id = $row.attr('data-area-id');
             const checked = $row.find('input[data-action="select-area"]').prop('checked');
             log('Select area ' + id + ': ' + (checked ? 'Checked' : 'Unchecked'));
-            if (editorData.mode == 'move') {
-                if (checked) {
-                    addToSelection([id]);
-                }
-                else {
-                    removeFromSelection([id]);
-                }
+            if (checked) {
+                addToSelection([id]);
+            }
+            else {
+                removeFromSelection([id]);
             }
         }
         break;
