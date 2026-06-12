@@ -533,6 +533,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "app_title",
             "button_configure_imagemap",
             "option_not_assigned",
+            "target_used_marker",
+            "tooltip_target_already_assigned",
             "toast_failed_initialize_area",
             "toast_enter_style_name",
             "toast_style_name_exists",
@@ -708,9 +710,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "bounds" => $data["bounds"] ?? [],
             "styles" => $data["styles"] ?? [],
         ]);
-        if (count($store["shapes"]) !== count($map)) {
-            throw new Exception($this->tt("error_invalid_incomplete_shape"));
-        }
         $new_hash = $this->get_map_config_hash($store);
         if (hash_equals($current_hash, $new_hash)) {
             return [

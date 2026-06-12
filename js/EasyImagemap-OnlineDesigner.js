@@ -197,6 +197,7 @@ function updateFields() {
 
 
 function editImageMap() {
+    cleanupAssignableSelectpickerContainers();
     currentAreaId = '';
     currentAnchor = null;
     $editor.find('.field-name').text(editorData.fieldName);
@@ -264,13 +265,21 @@ function editImageMap() {
     $editor.modal('show', { backdrop: 'static' });
 }
 
-function assignableOptionContent(assignable, option) {
-    const $badge = $('<span></span>').addClass('badge badge-dark');
+function assignableOptionContent(assignable, option, isUsed = false) {
+    const $badge = $('<span></span>').addClass('badge').addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-dark');
     $badge.append($(assignable.icon));
     $badge.append(document.createTextNode(' ' + assignable.name));
     const $content = $('<span></span>');
     $content.append($badge);
     $content.append(document.createTextNode(' - ' + option.label));
+    if (isUsed) {
+        $('<span></span>')
+            .addClass('badge badge-light eim-target-used-marker')
+            .attr('title', tt('tooltip_target_already_assigned', 'Already assigned to another shape'))
+            .append($('<i></i>').addClass('fa-solid fa-check'))
+            .append(document.createTextNode(' ' + tt('target_used_marker', 'used')))
+            .appendTo($content);
+    }
     return $content.html();
 }
 
@@ -796,6 +805,25 @@ function cleanNumber(value, fallback = 0) {
 
 function getMousePosition(e) {
     const CTM = svg.getScreenCTM();
+    if (CTM && typeof CTM.inverse == 'function' && typeof svg.createSVGPoint == 'function') {
+        const point = svg.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const transformed = point.matrixTransform(CTM.inverse());
+        return {
+            x: Math.round(transformed.x),
+            y: Math.round(transformed.y),
+        };
+    }
+    if (!CTM) {
+        const rect = svg.getBoundingClientRect();
+        const scaleX = rect.width ? editorData.bounds.width / rect.width : 1;
+        const scaleY = rect.height ? editorData.bounds.height / rect.height : 1;
+        return {
+            x: Math.round((e.clientX - rect.left) * scaleX),
+            y: Math.round((e.clientY - rect.top) * scaleY),
+        };
+    }
     return {
         x: Math.round((e.clientX - CTM.e) / CTM.a),
         y: Math.round((e.clientY - CTM.f) / CTM.d)
@@ -1006,7 +1034,7 @@ function syncCornerHandle() {
     setAnchorPoint(cornerAnchor, addVectors(c, { x: anchorPoint(widthAnchor).x - c.x, y: anchorPoint(widthAnchor).y - c.y }, { x: anchorPoint(heightAnchor).x - c.x, y: anchorPoint(heightAnchor).y - c.y }));
 }
 
-function activateAnchor(anchor) {
+function activateAnchor(anchor, useFallback = true) {
     $svg.find('.anchor.active').each(function() { this.classList.remove('active'); });
     if (anchor) {
         anchor.classList.add('active');
@@ -1015,7 +1043,7 @@ function activateAnchor(anchor) {
         }
         currentAnchor = anchor;
     }
-    else if (editorData.anchors.length > 0) {
+    else if (useFallback && editorData.anchors.length > 0) {
         const center = findAnchorByRole('center');
         activateAnchor(center ?? editorData.anchors[editorData.anchors.length - 1]);
         return;
@@ -1305,6 +1333,17 @@ function duplicateCurrentEditAreaForDrag() {
     return true;
 }
 
+function duplicateCurrentEditAreaForKeyboard() {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !areaHasData(editorData.areas[currentAreaId])) return false;
+    const originalId = currentAreaId;
+    const uuid = cloneArea(originalId, 0, 0);
+    addTableRow(uuid, originalId);
+    showWhenNoAreas();
+    setCurrentEditArea(uuid);
+    activateCenterHandle();
+    return true;
+}
+
 function startDraggingAnchor(anchor, pointerId) {
     if (!anchor) return false;
     currentAnchor = anchor;
@@ -1363,7 +1402,7 @@ function getAnchorTabOrder() {
     const lastIdx = vertices.indexOf(last);
     const orderedVertices = [];
     for (let offset = 0; offset < vertices.length; offset++) {
-        orderedVertices.push(vertices[(lastIdx - offset + vertices.length) % vertices.length]);
+        orderedVertices.push(vertices[(lastIdx + offset) % vertices.length]);
     }
     return center ? [center].concat(orderedVertices) : orderedVertices;
 }
@@ -1518,6 +1557,12 @@ function handleKeyEvent(e) {
         e.ctrlKey ? 'Ctrl' : '',
         e.shiftKey ? 'Shift' : ''
     ].join('');
+    if (modifier == 'Ctrl' && (e.key == 'ArrowUp' || e.key == 'ArrowDown') && editorData.mode != 'preview') {
+        if (selectAdjacentArea(e.key == 'ArrowDown' ? 1 : -1)) {
+            e.preventDefault();
+            return false;
+        }
+    }
     const arrowDelta = keyMoveDelta(e.key, e.shiftKey ? 10 : 1);
     if (arrowDelta && (modifier == '' || modifier == 'Shift') && editorData.mode == 'edit') {
         if (moveActiveEditHandle(arrowDelta.x, arrowDelta.y)) {
@@ -1574,6 +1619,18 @@ function handleKeyEvent(e) {
             e.preventDefault();
             return false;
         }
+        else if (modifier == '' && e.key == 'c') {
+            if (activateCenterHandle()) {
+                e.preventDefault();
+                return false;
+            }
+        }
+        else if (modifier == '' && e.key == 'd') {
+            if (duplicateCurrentEditAreaForKeyboard()) {
+                e.preventDefault();
+                return false;
+            }
+        }
         // When the letter m is pressed, switch to move mode
         else if (modifier == '' && e.key == 'm') {
             setMode('move');
@@ -1595,6 +1652,37 @@ function keyMoveDelta(key, step = 1) {
         ArrowRight: { x: step, y: 0 },
     };
     return deltas[key] ?? null;
+}
+
+function activateCenterHandle() {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !editorData.anchors.length) return false;
+    const center = findAnchorByRole('center');
+    if (!center) return false;
+    activateAnchor(center);
+    return true;
+}
+
+function selectAdjacentArea(direction) {
+    const ids = areaIdsInRowOrder();
+    if (!ids.length) return false;
+    let idx = ids.indexOf(currentAreaId);
+    if (idx == -1 && editorData.selection.length) {
+        const selectedInRowOrder = ids.filter(id => editorData.selection.includes(id));
+        idx = selectedInRowOrder.length ? ids.indexOf(selectedInRowOrder[0]) : -1;
+    }
+    const nextIdx = idx == -1
+        ? (direction > 0 ? 0 : ids.length - 1)
+        : Math.max(0, Math.min(ids.length - 1, idx + direction));
+    if (idx == nextIdx && currentAreaId == ids[nextIdx]) return false;
+    setMode('edit');
+    setCurrentEditArea(ids[nextIdx]);
+    return true;
+}
+
+function areaIdsInRowOrder() {
+    return $editor.find('tr[data-area-id]').toArray()
+        .map(row => row.dataset.areaId)
+        .filter(id => id && editorData.areas[id]);
 }
 
 //#endregion
@@ -1702,6 +1790,7 @@ function handleSVGEvent(e) {
                 const anchorPos = anchorPoint(currentAnchor);
                 currentAnchor.dataset.lastX = anchorPos.x;
                 currentAnchor.dataset.lastY = anchorPos.y;
+                currentAnchor.dataset.dragMoved = '0';
                 currentAnchor.classList.add('dragging');
             }
             else {
@@ -1723,6 +1812,9 @@ function handleSVGEvent(e) {
                 svg.appendChild(newAnchor);
                 insertPolygonAnchor(newAnchor);
                 currentAnchor = newAnchor;
+                currentAnchor.dataset.lastX = pos.x;
+                currentAnchor.dataset.lastY = pos.y;
+                currentAnchor.dataset.dragMoved = '0';
                 updatePolyCenterAnchor();
                 updateEditShape();
             }
@@ -1738,6 +1830,7 @@ function handleSVGEvent(e) {
         
         // Drag an anchor
         if (type == 'pointermove') {
+            currentAnchor.dataset.dragMoved = '1';
             if (currentAnchor.dataset.role == 'center') {
                 const anchorPos = anchorPoint(currentAnchor);
                 const oldX = Number.parseFloat(currentAnchor.dataset.lastX ?? anchorPos.x);
@@ -1754,6 +1847,8 @@ function handleSVGEvent(e) {
             }
             // Update coordinates of anchor
             setAnchorPoint(currentAnchor, pos);
+            currentAnchor.dataset.lastX = pos.x;
+            currentAnchor.dataset.lastY = pos.y;
             syncOrientedHandles(e.shiftKey);
             updatePolyCenterAnchor();
             updateEditShape();
@@ -1763,15 +1858,17 @@ function handleSVGEvent(e) {
 
         // End dragging of an anchor
         if (type == 'pointerup') {
-            if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
+            const moved = currentAnchor.dataset.dragMoved == '1';
+            const finalPos = moved ? pos : anchorPoint(currentAnchor);
+            if (finalPos.x < 0 || finalPos.y < 0 || finalPos.x >= editorData.bounds.width || finalPos.y >= editorData.bounds.height) {
                 if (editorData.areas[currentAreaId]?.type == 'poly' && currentAnchor.dataset.role != 'center') {
                     // Outside of edit area - delete polygon anchor
                     removeAnchor(currentAnchor);
                 }
                 else {
                     setAnchorPoint(currentAnchor, {
-                        x: Math.max(0, Math.min(editorData.bounds.width - 1, pos.x)),
-                        y: Math.max(0, Math.min(editorData.bounds.height - 1, pos.y)),
+                        x: Math.max(0, Math.min(editorData.bounds.width - 1, finalPos.x)),
+                        y: Math.max(0, Math.min(editorData.bounds.height - 1, finalPos.y)),
                     });
                     syncOrientedHandles(e.shiftKey);
                     activateAnchor(currentAnchor);
@@ -1909,6 +2006,7 @@ function showWhenNoAreas() {
  */
 function updateBackgroundShape(id, editing = false) {
     const area = editorData.areas[id];
+    updateAreaRowState(id);
     const $bg = $svg.find('.background[data-id="' + id + '"]');
     if ($bg.length == 1 && $bg[0].tagName.toLowerCase() == shapeTag(area.type)) {
         setShapeAttributes($bg[0], area.type, area.data);
@@ -1944,6 +2042,7 @@ function applyDesignerShapeStyle(el, area, state) {
 function updateStyleSample(id) {
     const area = editorData.areas[id] ?? null;
     if (!area) return;
+    updateAreaRowState(id);
     const style = getAreaStyle(area);
     const $sample = $('tr[data-area-id="' + id + '"]').find('.area-style-sample');
     $sample.empty();
@@ -1968,7 +2067,10 @@ function clearCurrentArea() {
  */
 function setCurrentEditArea(id) {
     hideTooltip();
-    if (currentAreaId == id) return;
+    if (currentAreaId == id) {
+        if (id) scrollAreaRowIntoView(id);
+        return;
+    }
     if (currentAreaId) {
         storeShapeData(currentAreaId);
         $svg.find('.background').each(function() {
@@ -1994,6 +2096,7 @@ function setCurrentEditArea(id) {
     setSelectedStyleName(area.style ?? DEFAULT_STYLE_NAME);
     // Update table
     $('tr[data-area-id="' + currentAreaId + '"]').find('input[name=active-area]').prop('checked', true);
+    scrollAreaRowIntoView(currentAreaId);
     // Update SVG
     updateBackgroundShape(currentAreaId, true);
     clearEditAnchors();
@@ -2010,7 +2113,7 @@ function setCurrentEditArea(id) {
             const vertices = editorData.anchors.filter(anchor => anchor.dataset.role != 'center');
             lastVertexAnchor = vertices[vertices.length - 1] ?? null;
         }
-        activateAnchor(null);
+        activateAnchor(null, false);
     updateEditShape();
     updateStyleControls();
     }
@@ -2019,6 +2122,23 @@ function setCurrentEditArea(id) {
         error(ex);
     }
     log('Activated area:', area);
+}
+
+function scrollAreaRowIntoView(id) {
+    const container = $editor.find('.area-assignments-table')[0];
+    const row = $editor.find('tr[data-area-id="' + id + '"]')[0];
+    if (!container || !row) return;
+    const headerHeight = $editor.find('table.eim-areas thead').outerHeight() || 0;
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    const viewTop = container.scrollTop + headerHeight;
+    const viewBottom = container.scrollTop + container.clientHeight;
+    if (rowTop < viewTop) {
+        container.scrollTop = Math.max(0, rowTop - headerHeight);
+    }
+    else if (rowBottom > viewBottom) {
+        container.scrollTop = rowBottom - container.clientHeight;
+    }
 }
 
 function anchorsFromShape(type, data) {
@@ -2135,7 +2255,7 @@ function applyShapeTypeChange(type) {
         const vertices = editorData.anchors.filter(anchor => anchor.dataset.role != 'center');
         lastVertexAnchor = vertices[vertices.length - 1] ?? null;
     }
-    activateAnchor(null);
+    activateAnchor(null, false);
     updateEditShape();
 }
 
@@ -2176,6 +2296,13 @@ function confirmShapeChange() {
     applyShapeTypeChange(type);
 }
 
+function updateAreaRowState(id) {
+    const area = editorData.areas[id] ?? null;
+    const $row = $editor.find('tr[data-area-id="' + id + '"]');
+    const missingShape = !!area && !areaHasData(area);
+    $row.toggleClass('eim-area-missing-shape', missingShape);
+}
+
 function shapeLabel(type) {
     return {
         circle: tt('shape_circle', 'Circle'),
@@ -2190,7 +2317,7 @@ function getShapeType() {
 }
 
 function areaHasData(area) {
-    if (area.type == 'poly') return typeof area.data == 'string' && area.data.trim() != '';
+    if (area.type == 'poly') return typeof area.data == 'string' && area.data.trim().split(/\s+/).filter(point => /^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$/.test(point)).length >= 3;
     if (area.type == 'rect') return area.data && area.data.width > 0 && area.data.height > 0;
     if (area.type == 'circle') return area.data && area.data.r > 0;
     if (area.type == 'ell') return area.data && area.data.rx > 0 && area.data.ry > 0;
@@ -2232,28 +2359,84 @@ function addTableRow(id, afterId = '') {
     const $select = $row.find('select');
     $select.html($selectTemplate.html());
     $select.val(editorData.areas[id].target ?? '') ;
-    initializeAssignableSelect($select);
     if (afterId == '') {
         $editor.find('tbody.area-list').append($row);
     }
     else {
         $editor.find('tr[data-area-id="' + afterId + '"]').after($row);
     }
+    initializeAssignableSelect($select);
     // Add background shape
     updateBackgroundShape(id);
-    updateStyleSample(id);
 }
 
 function initializeAssignableSelect($select) {
     // Render the menu outside the scrollable assignments table so it can overlap the style panel cleanly.
-    $select.on('show.bs.select shown.bs.select loaded.bs.select rendered.bs.select', function() {
+    $select.on('shown.bs.select loaded.bs.select rendered.bs.select', function() {
         tagAssignableSelectpickerContainer($select);
+        decorateAssignableMenu($select);
+        sanitizeAssignableButton($select);
     });
     // @ts-ignore
     $select.selectpicker({
-        container: 'body'
+        container: '.eim-editor'
     });
     tagAssignableSelectpickerContainer($select);
+    sanitizeAssignableButton($select);
+}
+
+function decorateAssignableMenu($select) {
+    const picker = $select.data('selectpicker');
+    if (!picker || !picker.$menu) return;
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const usedTargets = assignedTargets(currentId);
+    const $items = picker.$menu.find('li:not(.divider):not(.dropdown-header)');
+    $select.find('option').each(function(idx) {
+        const code = (this.value ?? '').toString();
+        const isUsed = !!code && usedTargets.has(code);
+        const $item = $items.eq(idx);
+        $item.toggleClass('eim-target-used-option', isUsed);
+        $item.find('.eim-target-used-marker').remove();
+        const $badge = $item.find('.badge').first();
+        $badge
+            .toggleClass('badge-warning eim-target-used-badge', isUsed)
+            .toggleClass('badge-dark', !isUsed);
+        if (isUsed) {
+            const $text = $item.find('a .text').first();
+            ($text.length ? $text : $item.find('a').first()).append(usedTargetMarkerContent());
+        }
+    });
+}
+
+function usedTargetMarkerContent() {
+    const $marker = $('<span></span>')
+        .addClass('badge badge-light eim-target-used-marker')
+        .attr('title', tt('tooltip_target_already_assigned', 'Already assigned to another shape'))
+        .append($('<i></i>').addClass('fa-solid fa-check'))
+        .append(document.createTextNode(' ' + tt('target_used_marker', 'used')));
+    return $marker;
+}
+
+function sanitizeAssignableButton($select) {
+    const picker = $select.data('selectpicker');
+    if (!picker || !picker.$button) return;
+    const $selected = $select.find('option:selected').first();
+    const content = $selected.attr('data-content') || $selected.text();
+    picker.$button.find('.filter-option-inner-inner').html(content);
+}
+
+function cleanupAssignableSelectpickerContainers() {
+    $('.eim-selectpicker-container').remove();
+}
+
+function assignedTargets(excludeId = '') {
+    const targets = new Set();
+    Object.keys(editorData.areas ?? {}).forEach(id => {
+        if (id == excludeId) return;
+        const area = editorData.areas[id];
+        if (area && area.target && areaHasData(area)) targets.add(area.target);
+    });
+    return targets;
 }
 
 function tagAssignableSelectpickerContainer($select) {
@@ -2582,8 +2765,18 @@ function removeAreaById(id) {
     removeFromSelection([id]);
 }
 
+function dropAreasWithoutShape() {
+    Object.keys(editorData.areas).forEach(id => {
+        if (!areaHasData(editorData.areas[id])) {
+            removeAreaById(id);
+        }
+    });
+    showWhenNoAreas();
+}
+
 function saveMap(overwrite) {
     clearCurrentArea();
+    dropAreasWithoutShape();
     const data = {
         fieldName: editorData.fieldName,
         formName: editorData.formName,
@@ -2773,6 +2966,7 @@ function executeEditorAction(action, $row, event) {
             const id = $row.attr('data-area-id');
             const code = $row.find('select').val();
             editorData.areas[id].target = code;
+            sanitizeAssignableButton($row.find('select.assignables'));
         }
         break;
         case 'style-change': {
@@ -2816,6 +3010,7 @@ function executeEditorAction(action, $row, event) {
             const id = $row.attr('data-area-id') ?? '';
             const uuid = addNewArea();
             addTableRow(uuid, id);
+            showWhenNoAreas();
             if (editorData.mode == 'edit') {
                 setCurrentEditArea(uuid);
             }
@@ -2825,6 +3020,7 @@ function executeEditorAction(action, $row, event) {
             const id = $row.attr('data-area-id') ?? '';
             const uuid = cloneArea(id);
             addTableRow(uuid, id);
+            showWhenNoAreas();
             if (editorData.mode == 'edit') {
                 setCurrentEditArea(uuid);
             }
@@ -2850,6 +3046,7 @@ function executeEditorAction(action, $row, event) {
             editorData = null;
             // @ts-ignore
             $editor.find('select.assignables').selectpicker('destroy');
+            cleanupAssignableSelectpickerContainers();
             hideShapeChangeDialog();
             hideStyleDeleteDialog();
             hideSaveConflictDialog();

@@ -358,7 +358,7 @@ function setupInteractivity(field, id, type, target, code, mode) {
     if (mode != 'from-target') {
         shape.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
     }
-    if (mode == '2-way') {
+    if (mode == '2-way' || mode == 'from-target') {
         setupTwoWayBinding(field, id, type, target, code);
         if (EIM_radioResetVal == null) {
             // Hijack radioResetVal

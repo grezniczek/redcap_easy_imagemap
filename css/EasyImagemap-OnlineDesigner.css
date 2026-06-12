@@ -220,16 +220,24 @@ tr.area .form-check {
 .assignables .badge i {
     font-size: 70% !important;
 }
+.assignables .eim-target-used-badge {
+    color: #2f2100;
+}
+.assignables .eim-target-used-marker {
+    margin-left: 6px;
+    color: #6c4a00;
+    border: 1px solid #f0d58a;
+}
 .bootstrap-select .dropdown-menu li a {
     font-size: 13px;
 }
 .bootstrap-select .dropdown-menu li a:hover {
     font-size: 13px;
 }
-body > .bs-container.eim-selectpicker-container {
+.eim-editor .bs-container.eim-selectpicker-container {
     z-index: 1065;
 }
-body > .bs-container.eim-selectpicker-container .dropdown-menu {
+.eim-editor .bs-container.eim-selectpicker-container .dropdown-menu {
     z-index: 1066;
 }
 svg.eim-svg {
@@ -348,9 +356,22 @@ svg.eim-svg.preview .background {
 table.eim-areas td {
     vertical-align: middle;
 }
+table.eim-areas tr.eim-area-missing-shape > td {
+    background-color: #fff1f1;
+}
+table.eim-areas tr.eim-area-missing-shape:hover > td {
+    background-color: #ffe5e5;
+}
 table.eim-areas {
     table-layout: fixed;
     width: 100%;
+}
+table.eim-areas thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: #fff;
+    box-shadow: 0 1px 0 #dee2e6;
 }
 table.eim-areas th.eim-col-actions {
     width: 70px;
