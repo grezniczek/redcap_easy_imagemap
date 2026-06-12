@@ -17,6 +17,9 @@ let $selectTemplate = $();
 let showingEditor = false;
 let JSMO = {};
 let editorData = null;
+let editorSavedState = '';
+let suppressBeforeUnload = false;
+let pendingUnsavedAction = null;
 
 /** @type {string} The current area */
 let currentAreaId = ''
@@ -77,6 +80,8 @@ function initialize(config_data, jsmo_obj) {
             executeEditorAction('assign-target', $(e.target).parents('tr[data-area-id]'), e);
         });
         $editor.on('keydown', handleKeyEvent);
+        $(window).off('beforeunload.easyimagemap').on('beforeunload.easyimagemap', handleBeforeUnload);
+        $(window).off('keydown.easyimagemap').on('keydown.easyimagemap', handleWindowKeyEvent);
 
         // Add buttons
         addOnlineDesignerButtons();
@@ -254,6 +259,7 @@ function editImageMap() {
     setupTableDnD();
     // Set two-way checkbox
     $editor.find('input[name=two-way]').prop('checked', editorData['two-way']);
+    markEditorStateSaved();
     // Some logging
     log('Invoking editor for ' + editorData.fieldName, editorData);
     // Hide REDCap's move to top button
@@ -266,11 +272,14 @@ function editImageMap() {
 }
 
 function assignableOptionContent(assignable, option, isUsed = false) {
-    const $badge = $('<span></span>').addClass('badge fs8').addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-dark');
+    const $badge = $('<span></span>').addClass('badge fs8').addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-secondary');
     $badge.append($(assignable.icon));
     $badge.append(document.createTextNode(' ' + assignable.name));
     const $label = $('<span></span>').addClass('eim-target-option-label fs10').text(option.label);
-    const $content = $('<span></span>').addClass('eim-target-option');
+    const $content = $('<span></span>')
+        .addClass('eim-target-option')
+        .addClass(targetCodeClass(option.code ?? ''))
+        .attr('data-eim-target-code', option.code ?? '');
     $content.append($badge);
     $content.append($('<br>'));
     $content.append($label);
@@ -282,7 +291,7 @@ function assignableOptionContent(assignable, option, isUsed = false) {
             .append(document.createTextNode(' ' + tt('target_used_marker', 'used')))
             .appendTo($content);
     }
-    return $content.html();
+    return $content.prop('outerHTML');
 }
 
 //#region Zoom
@@ -318,7 +327,7 @@ function zoomTo(f) {
     const current = currentAreaId;
     setCurrentEditArea('');
     if (current) {
-        setCurrentEditArea(current);
+        setCurrentEditArea(current, true);
     }
 }
 
@@ -382,6 +391,66 @@ function areasToMap() {
 
 function stylesToMap() {
     return normalizeStyles(editorData.styles ?? {});
+}
+
+function buildMapPayload() {
+    return {
+        fieldName: editorData.fieldName,
+        formName: editorData.formName,
+        bounds: editorData.bounds,
+        configHash: editorData.configHash ?? '',
+        overwrite: false,
+        'two-way': $editor.find('input[name=two-way]').prop('checked'),
+        styles: stylesToMap(),
+        map: areasToMap(),
+    };
+}
+
+function buildChangeTrackingPayload() {
+    const payload = buildMapPayload();
+    delete payload.configHash;
+    delete payload.overwrite;
+    return payload;
+}
+
+function markEditorStateSaved() {
+    editorSavedState = editorData ? stableStringify(buildChangeTrackingPayload()) : '';
+}
+
+function hasUnsavedEditorChanges() {
+    return !!editorData && editorSavedState !== '' && stableStringify(buildChangeTrackingPayload()) !== editorSavedState;
+}
+
+function handleBeforeUnload(event) {
+    if (suppressBeforeUnload || !hasUnsavedEditorChanges()) return undefined;
+    const message = tt('beforeunload_unsaved_changes', 'You have unsaved Easy Imagemap changes. Leave this page and discard them?');
+    const originalEvent = event.originalEvent ?? event;
+    originalEvent.preventDefault();
+    originalEvent.returnValue = message;
+    return message;
+}
+
+function handleWindowKeyEvent(event) {
+    const key = (event.key ?? '').toString().toLowerCase();
+    const isReloadShortcut = key == 'f5' || ((event.ctrlKey || event.metaKey) && key == 'r');
+    if (!isReloadShortcut || !hasUnsavedEditorChanges()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    requestDiscardChanges(() => {
+        suppressBeforeUnload = true;
+        window.location.reload();
+    });
+    return false;
+}
+
+function stableStringify(value) {
+    if (Array.isArray(value)) {
+        return '[' + value.map(stableStringify).join(',') + ']';
+    }
+    if (value && typeof value == 'object') {
+        return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';
+    }
+    return JSON.stringify(value);
 }
 
 //#endregion
@@ -805,6 +874,10 @@ function cleanNumber(value, fallback = 0) {
     return Math.round(number * 100) / 100;
 }
 
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
 function getMousePosition(e) {
     const CTM = svg.getScreenCTM();
     if (CTM && typeof CTM.inverse == 'function' && typeof svg.createSVGPoint == 'function') {
@@ -1161,7 +1234,7 @@ function setMode(mode) {
         log('Mode updated to: ' + mode);
         if (prevMode == 'move' && editorData.selection.length == 1) {
             // When there is only a single item in the selection, then set it as the currently edited area
-            setCurrentEditArea(editorData.selection[0]);
+            setCurrentEditArea(editorData.selection[0], true);
         }
     }
     else if (mode == 'move') {
@@ -1677,7 +1750,7 @@ function selectAdjacentArea(direction) {
         : Math.max(0, Math.min(ids.length - 1, idx + direction));
     if (idx == nextIdx && currentAreaId == ids[nextIdx]) return false;
     setMode('edit');
-    setCurrentEditArea(ids[nextIdx]);
+    setCurrentEditArea(ids[nextIdx], true);
     return true;
 }
 
@@ -2067,10 +2140,11 @@ function clearCurrentArea() {
  * @param {string} id 
  * @returns void
  */
-function setCurrentEditArea(id) {
+function setCurrentEditArea(id, scrollCanvas = false) {
     hideTooltip();
     if (currentAreaId == id) {
         if (id) scrollAreaRowIntoView(id);
+        if (id && scrollCanvas) scrollCurrentAreaCenterIntoView();
         return;
     }
     if (currentAreaId) {
@@ -2116,14 +2190,62 @@ function setCurrentEditArea(id) {
             lastVertexAnchor = vertices[vertices.length - 1] ?? null;
         }
         activateAnchor(null, false);
-    updateEditShape();
-    updateStyleControls();
+        updateEditShape();
+        updateStyleControls();
+        if (scrollCanvas) scrollCurrentAreaCenterIntoView();
     }
     catch (ex) {
         showToast(tt('toast_failed_initialize_area', 'Failed to initialize area. Check console for details.'), 'error');
         error(ex);
     }
     log('Activated area:', area);
+}
+
+function scrollCurrentAreaCenterIntoView() {
+    const container = $editor.find('#eim-container')[0];
+    if (!container || !currentAreaId || !editorData.areas[currentAreaId]) return;
+    const center = getCurrentAreaCenterScreenPoint();
+    if (!center) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const viewLeft = containerRect.left;
+    const viewTop = containerRect.top;
+    const viewRight = viewLeft + container.clientWidth;
+    const viewBottom = viewTop + container.clientHeight;
+    const isVisible = center.x >= viewLeft && center.x <= viewRight && center.y >= viewTop && center.y <= viewBottom;
+    if (isVisible) return;
+
+    const maxLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetLeft = container.scrollLeft + (center.x - viewLeft) - (container.clientWidth / 2);
+    const targetTop = container.scrollTop + (center.y - viewTop) - (container.clientHeight / 2);
+    container.scrollLeft = clamp(targetLeft, 0, maxLeft);
+    container.scrollTop = clamp(targetTop, 0, maxTop);
+}
+
+function getCurrentAreaCenterScreenPoint() {
+    const centerAnchor = findAnchorByRole('center');
+    if (centerAnchor) {
+        const rect = centerAnchor.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+        };
+    }
+
+    const area = editorData.areas[currentAreaId] ?? null;
+    const svgRect = svg ? svg.getBoundingClientRect() : null;
+    if (!area || !svgRect) return null;
+    const center = getAreaCenter(area);
+    return {
+        x: svgRect.left + center.x * editorData.zoom,
+        y: svgRect.top + center.y * editorData.zoom,
+    };
+}
+
+function getAreaCenter(area) {
+    if (area.type == 'poly') return polygonCenterOfMass(polyToPoints(area.data));
+    return getShapeCenter(normalizeShapeData(area.type, area.data));
 }
 
 function scrollAreaRowIntoView(id) {
@@ -2374,40 +2496,77 @@ function addTableRow(id, afterId = '') {
 
 function initializeAssignableSelect($select) {
     // Render the menu outside the scrollable assignments table so it can overlap the style panel cleanly.
-    $select.on('shown.bs.select loaded.bs.select rendered.bs.select', function() {
-        tagAssignableSelectpickerContainer($select);
-        decorateAssignableMenu($select);
-        sanitizeAssignableButton($select);
+    $select.on('shown.bs.select loaded.bs.select rendered.bs.select', function(event) {
+        updateAssignableSelectVisuals($select);
+        if (event.type == 'shown') {
+            setTimeout(() => updateAssignableSelectVisuals($select), 0);
+        }
     });
     // @ts-ignore
     $select.selectpicker({
         container: '.eim-editor'
     });
+    updateAssignableSelectVisuals($select);
+}
+
+function updateAssignableSelectVisuals($select) {
     tagAssignableSelectpickerContainer($select);
+    decorateAssignableMenu($select);
     sanitizeAssignableButton($select);
+}
+
+function updateAllAssignableSelectVisuals() {
+    $editor.find('select.assignables').each(function() {
+        updateAssignableSelectVisuals($(this));
+    });
 }
 
 function decorateAssignableMenu($select) {
     const picker = $select.data('selectpicker');
-    if (!picker || !picker.$menu) return;
+    if (!picker) return;
     const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
     const usedTargets = assignedTargets(currentId);
-    const $items = picker.$menu.find('li:not(.divider):not(.dropdown-header)');
-    $select.find('option').each(function(idx) {
+    $select.find('option').each(function() {
         const code = (this.value ?? '').toString();
         const isUsed = !!code && usedTargets.has(code);
-        const $item = $items.eq(idx);
-        $item.toggleClass('eim-target-used-option', isUsed);
-        $item.find('.eim-target-used-marker').remove();
-        const $badge = $item.find('.badge').first();
-        $badge
-            .toggleClass('badge-warning eim-target-used-badge', isUsed)
-            .toggleClass('badge-dark', !isUsed);
-        if (isUsed) {
-            const $text = $item.find('a .text').first();
-            ($text.length ? $text : $item.find('a').first()).append(usedTargetMarkerContent());
-        }
+        if (!code) return;
+        decorateTargetOption(getAssignableMenuTargets(picker, code), isUsed);
     });
+}
+
+function getAssignableMenuTargets(picker, code) {
+    let $targets = $();
+    const codeClass = targetCodeClass(code);
+    [picker.$menu, picker.$bsContainer, picker.$newElement].forEach($root => {
+        if (!$root || !$root.length) return;
+        $targets = $targets.add($root.find('.eim-target-option.' + codeClass));
+        $targets = $targets.add($root.find('.eim-target-option').filter(function() {
+            return ($(this).attr('data-eim-target-code') ?? '').toString() == code;
+        }));
+    });
+    return $targets;
+}
+
+function targetCodeClass(code) {
+    return 'eim-target-code-' + (code ?? '').toString().replace(/[^A-Za-z0-9_-]/g, char => {
+        return '_' + char.charCodeAt(0).toString(16) + '_';
+    });
+}
+
+function decorateTargetOption($content, isUsed) {
+    if (!$content || !$content.length) return;
+    $content.toggleClass('eim-target-used-option', isUsed);
+    $content.find('.eim-target-used-marker').remove();
+    const $badge = $content.find('.badge').not('.eim-target-used-marker').first();
+    $badge
+        .removeClass('badge-dark badge-secondary badge-warning eim-target-used-badge')
+        .addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-secondary');
+    if (isUsed) {
+        const $target = $content.find('.eim-target-option').first();
+        const $text = $content.find('a .text').first();
+        const $appendTo = $target.length ? $target : ($text.length ? $text : $content);
+        $appendTo.append(usedTargetMarkerContent());
+    }
 }
 
 function usedTargetMarkerContent() {
@@ -2423,8 +2582,13 @@ function sanitizeAssignableButton($select) {
     const picker = $select.data('selectpicker');
     if (!picker || !picker.$button) return;
     const $selected = $select.find('option:selected').first();
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const code = ($selected.val() ?? '').toString();
+    const isUsed = !!code && assignedTargets(currentId).has(code);
     const content = $selected.attr('data-content') || $selected.text();
-    picker.$button.find('.filter-option-inner-inner').html(content);
+    const $content = $('<span></span>').html(content);
+    decorateTargetOption($content, isUsed);
+    picker.$button.find('.filter-option-inner-inner').html($content.html());
 }
 
 function cleanupAssignableSelectpickerContainers() {
@@ -2710,6 +2874,30 @@ function hideSaveBlockedDialog() {
     $editor.find('.eim-save-blocked-dialog').hide();
 }
 
+function showUnsavedChangesDialog(action) {
+    pendingUnsavedAction = action;
+    $editor.find('.eim-unsaved-changes-dialog').css('display', 'flex');
+}
+
+function hideUnsavedChangesDialog() {
+    pendingUnsavedAction = null;
+    $editor.find('.eim-unsaved-changes-dialog').hide();
+}
+
+function requestDiscardChanges(action) {
+    if (!hasUnsavedEditorChanges()) {
+        action();
+        return;
+    }
+    showUnsavedChangesDialog(action);
+}
+
+function confirmDiscardChanges() {
+    const action = pendingUnsavedAction;
+    hideUnsavedChangesDialog();
+    if (typeof action == 'function') action();
+}
+
 function confirmStyleDelete() {
     const name = pendingStyleDeleteName;
     const replacement = $editor.find('[data-eim-style-delete-reassign]').val();
@@ -2765,6 +2953,7 @@ function removeAreaById(id) {
     $row.remove();
     $svg.find('[data-id="' + id + '"]').remove();
     removeFromSelection([id]);
+    updateAllAssignableSelectVisuals();
 }
 
 function dropAreasWithoutShape() {
@@ -2776,19 +2965,34 @@ function dropAreasWithoutShape() {
     showWhenNoAreas();
 }
 
+function cancelEditor() {
+    applyZoom('zoom1x');
+    editorData = null;
+    editorSavedState = '';
+    pendingUnsavedAction = null;
+    // @ts-ignore
+    $editor.find('select.assignables').selectpicker('destroy');
+    cleanupAssignableSelectpickerContainers();
+    hideShapeChangeDialog();
+    hideStyleDeleteDialog();
+    hideSaveConflictDialog();
+    hideSaveBlockedDialog();
+    hideUnsavedChangesDialog();
+    hideStylePanel();
+    $editor.find('.empty-on-close').children().remove();
+    $editor.find('.remove-on-close').remove();
+    // Prevent focus error
+    if (document.activeElement && typeof document.activeElement['blur'] == 'function') document.activeElement['blur']();
+    // @ts-ignore
+    $editor.modal('hide');
+    $('.to-top-button').show();
+}
+
 function saveMap(overwrite) {
     clearCurrentArea();
     dropAreasWithoutShape();
-    const data = {
-        fieldName: editorData.fieldName,
-        formName: editorData.formName,
-        bounds: editorData.bounds,
-        configHash: editorData.configHash ?? '',
-        overwrite: overwrite === true,
-        'two-way': $editor.find('input[name=two-way]').prop('checked'),
-        styles: stylesToMap(),
-        map: areasToMap(),
-    };
+    const data = buildMapPayload();
+    data.overwrite = overwrite === true;
     JSMO.ajax('save-map', data).then(function(response) {
         handleSaveResponse(response);
     }).catch(function(err) {
@@ -2817,9 +3021,11 @@ function handleSaveResponse(response) {
     hideSaveConflictDialog();
     hideSaveBlockedDialog();
     if (response.status == 'unchanged') {
+        markEditorStateSaved();
         showToast(response.message || tt('toast_no_changes', 'No changes to save.'), 'info');
     }
     else if (response.status == 'saved') {
+        markEditorStateSaved();
         showToast(tt('toast_saved', 'Map data was successfully saved.'), 'success');
     }
     else {
@@ -2933,6 +3139,14 @@ function executeEditorAction(action, $row, event) {
             hideSaveBlockedDialog();
         }
         break;
+        case 'unsaved-discard-confirm': {
+            confirmDiscardChanges();
+        }
+        break;
+        case 'unsaved-discard-cancel': {
+            hideUnsavedChangesDialog();
+        }
+        break;
         case 'style-copy': {
             copyStyleState();
         }
@@ -2968,7 +3182,7 @@ function executeEditorAction(action, $row, event) {
             const id = $row.attr('data-area-id');
             const code = $row.find('select').val();
             editorData.areas[id].target = code;
-            sanitizeAssignableButton($row.find('select.assignables'));
+            updateAllAssignableSelectVisuals();
         }
         break;
         case 'style-change': {
@@ -2993,7 +3207,7 @@ function executeEditorAction(action, $row, event) {
         case 'edit-area': {
             const id = $row.attr('data-area-id');
             setMode('edit');
-            setCurrentEditArea(id);
+            setCurrentEditArea(id, true);
         }
         break;
         case 'select-area': {
@@ -3043,25 +3257,7 @@ function executeEditorAction(action, $row, event) {
         //#endregion
         //#region Exit Editor
         case 'cancel': {
-            // Reset
-            applyZoom('zoom1x');
-            editorData = null;
-            // @ts-ignore
-            $editor.find('select.assignables').selectpicker('destroy');
-            cleanupAssignableSelectpickerContainers();
-            hideShapeChangeDialog();
-            hideStyleDeleteDialog();
-            hideSaveConflictDialog();
-            hideSaveBlockedDialog();
-            hideStylePanel();
-            $editor.find('.empty-on-close').children().remove();
-            $editor.find('.remove-on-close').remove();
-            // Prevent focus error
-            if (document.activeElement && typeof document.activeElement['blur'] == 'function') document.activeElement['blur']();
-            // Close editor
-            // @ts-ignore
-            $editor.modal('hide');
-            $('.to-top-button').show();
+            requestDiscardChanges(cancelEditor);
         }
         break;
         case 'apply': {

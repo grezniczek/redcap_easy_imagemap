@@ -38,7 +38,8 @@
 .eim-editor .eim-shape-change-dialog,
 .eim-editor .eim-style-delete-dialog,
 .eim-editor .eim-save-conflict-dialog,
-.eim-editor .eim-save-blocked-dialog {
+.eim-editor .eim-save-blocked-dialog,
+.eim-editor .eim-unsaved-changes-dialog {
     position: absolute;
     inset: 0;
     z-index: 20;
@@ -165,7 +166,7 @@
     grid-template-columns: 1fr 1fr;
     gap: 6px 8px;
 }
-.eim-editor .eim-style-grid label {
+.eim-editor .eim-style-grid .eim-style-control {
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -214,16 +215,20 @@ tr.area td {
 tr.area .form-check {
     margin-top: 8px;
 }
-.assignables .badge {
+.eim-editor .eim-target-option .badge,
+.eim-editor .bootstrap-select .filter-option-inner-inner .badge,
+.eim-editor .eim-selectpicker-container .dropdown-menu .badge {
     font-weight: normal !important;
 }
-.assignables .badge i {
+.eim-editor .eim-target-option .badge i,
+.eim-editor .bootstrap-select .filter-option-inner-inner .badge i,
+.eim-editor .eim-selectpicker-container .dropdown-menu .badge i {
     font-size: 70% !important;
 }
-.assignables .eim-target-used-badge {
+.eim-editor .eim-target-used-badge {
     color: #2f2100;
 }
-.assignables .eim-target-used-marker {
+.eim-editor .eim-target-used-marker {
     margin-left: 6px;
     color: #6c4a00;
     border: 1px solid #f0d58a;
@@ -402,7 +407,7 @@ table.eim-areas .form-inline {
     min-width: 0;
     max-width: 100%;
 }
-table.eim-areas .bootstrap-select .filter-option-inner-inner {
+table.eim-areas .bootstrap-select .filter-option-inner-inner:has(.eim-target-option-label) {
     line-height: 10px;
 }
 .eim-editor .eim-target-option {

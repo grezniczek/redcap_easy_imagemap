@@ -366,6 +366,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             </div>
                         </div>
                     </div>
+                    <div class="eim-unsaved-changes-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-unsaved-changes-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-unsaved-changes-title"><?= $this->tt_esc("dialog_unsaved_changes_title") ?></h5>
+                            <p>
+                                <?= $this->tt_esc("dialog_unsaved_changes_message") ?>
+                            </p>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="unsaved-discard-cancel" class="btn btn-secondary btn-sm"><?= $this->tt_esc("button_stay") ?></button>
+                                <button type="button" data-action="unsaved-discard-confirm" class="btn btn-danger btn-sm"><?= $this->tt_esc("button_discard_changes") ?></button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="modal-body">
                         <div class="area-assignments">
                             <div class="area-assignments-intro">
@@ -419,10 +431,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     </button>
                                 </div>
                                 <div class="eim-style-grid">
-                                    <label><input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500"> <?= $this->tt_esc("style_prop_fill") ?></label>
-                                    <label><input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500"> <?= $this->tt_esc("style_prop_stroke") ?></label>
-                                    <label><input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"> <?= $this->tt_esc("style_prop_fill_opacity") ?></label>
-                                    <label><input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"> <?= $this->tt_esc("style_prop_stroke_opacity") ?></label>
+                                    <span class="eim-style-control"><input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500" aria-label="<?= $this->tt_esc("style_prop_fill") ?>"> <span aria-hidden="true"><?= $this->tt_esc("style_prop_fill") ?></span></span>
+                                    <span class="eim-style-control"><input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500" aria-label="<?= $this->tt_esc("style_prop_stroke") ?>"> <span aria-hidden="true"><?= $this->tt_esc("style_prop_stroke") ?></span></span>
+                                    <label class="eim-style-control"><input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"> <?= $this->tt_esc("style_prop_fill_opacity") ?></label>
+                                    <label class="eim-style-control"><input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"> <?= $this->tt_esc("style_prop_stroke_opacity") ?></label>
                                     <div class="eim-style-actions btn-group btn-group-xs" role="group" aria-label="<?= $this->tt_esc("aria_style_copy_sync") ?>">
                                         <button type="button" data-action="style-copy" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_copy_style_state") ?>">
                                             <i class="fa-regular fa-copy"></i>
@@ -434,7 +446,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                             <i class="fa-solid fa-link"></i>
                                         </button>
                                     </div>
-                                    <label><input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"> <?= $this->tt_esc("style_prop_stroke_width") ?></label>
+                                    <label class="eim-style-control"><input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"> <?= $this->tt_esc("style_prop_stroke_width") ?></label>
                                 </div>
                             </div>
                             <div class="area-assignments-table">
