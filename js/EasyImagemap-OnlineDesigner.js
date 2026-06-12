@@ -102,7 +102,7 @@ function addOnlineDesignerButtons() {
                     }
                     editImageMap();
                 }).catch(function(err) {
-                    showToast(err, true);
+                    showToast(err, 'error');
                 }).finally(function() {
                     $btn.prop('disabled', false);
                     showingEditor = false;
@@ -204,9 +204,13 @@ function editImageMap() {
     $selectTemplate = $('<select><option value="" data-content="(not assigned)"></option></select>');
     for (let assignable of editorData.assignables) {
         for (let option of assignable.options) {
-            const label = `<span class="badge badge-dark">${assignable.icon} ${assignable.name}</span> &ndash; ${option.label}`;
-            assignableLabels[option.code] = label;
-            $selectTemplate.append(`<option value='${option.code}' data-content='${label}'>[${assignable.name}] ${option.label}</option>`);
+            const content = assignableOptionContent(assignable, option);
+            assignableLabels[option.code] = content;
+            $('<option></option>')
+                .val(option.code)
+                .attr('data-content', content)
+                .text('[' + assignable.name + '] ' + option.label)
+                .appendTo($selectTemplate);
         }
     }
     // Build SVG to overlay on image
@@ -251,6 +255,16 @@ function editImageMap() {
     // Finally, show the dialog
     // @ts-ignore
     $editor.modal('show', { backdrop: 'static' });
+}
+
+function assignableOptionContent(assignable, option) {
+    const $badge = $('<span></span>').addClass('badge badge-dark');
+    $badge.append($(assignable.icon));
+    $badge.append(document.createTextNode(' ' + assignable.name));
+    const $content = $('<span></span>');
+    $content.append($badge);
+    $content.append(document.createTextNode(' - ' + option.label));
+    return $content.html();
 }
 
 //#region Zoom
@@ -1666,7 +1680,7 @@ function setCurrentEditArea(id) {
     updateStyleControls();
     }
     catch (ex) {
-        showToast('Failed to initialize area. Check console for details.', true);
+        showToast('Failed to initialize area. Check console for details.', 'error');
         error(ex);
     }
     log('Activated area:', area);
@@ -2093,11 +2107,11 @@ function addNamedStyle() {
     const $input = $editor.find('[data-style-new-name]');
     const name = normalizeStyleName($input.val());
     if (!name) {
-        showToast('Enter a style name.', true);
+        showToast('Enter a style name.', 'warning');
         return;
     }
     if (editorData.styles[name]) {
-        showToast('A style with that name already exists.', true);
+        showToast('A style with that name already exists.', 'warning');
         return;
     }
     editorData.styles[name] = getStyleByName(getSelectedStyleName());
@@ -2145,6 +2159,26 @@ function showStyleDeleteDialog(name, assignedCount) {
 function hideStyleDeleteDialog() {
     pendingStyleDeleteName = '';
     $editor.find('.eim-style-delete-dialog').hide();
+}
+
+function showSaveConflictDialog(message) {
+    const $dialog = $editor.find('.eim-save-conflict-dialog');
+    $dialog.find('[data-eim-save-conflict-message]').text(message || 'The Easy Imagemap configuration changed after you opened the designer. Overwrite it with your current version?');
+    $dialog.css('display', 'flex');
+}
+
+function hideSaveConflictDialog() {
+    $editor.find('.eim-save-conflict-dialog').hide();
+}
+
+function showSaveBlockedDialog(message) {
+    const $dialog = $editor.find('.eim-save-blocked-dialog');
+    $dialog.find('[data-eim-save-blocked-message]').text(message || 'This Easy Imagemap configuration cannot be saved right now.');
+    $dialog.css('display', 'flex');
+}
+
+function hideSaveBlockedDialog() {
+    $editor.find('.eim-save-blocked-dialog').hide();
 }
 
 function confirmStyleDelete() {
@@ -2202,6 +2236,59 @@ function removeAreaById(id) {
     $row.remove();
     $svg.find('[data-id="' + id + '"]').remove();
     removeFromSelection([id]);
+}
+
+function saveMap(overwrite) {
+    clearCurrentArea();
+    const data = {
+        fieldName: editorData.fieldName,
+        formName: editorData.formName,
+        bounds: editorData.bounds,
+        configHash: editorData.configHash ?? '',
+        overwrite: overwrite === true,
+        'two-way': $editor.find('input[name=two-way]').prop('checked'),
+        styles: stylesToMap(),
+        map: areasToMap(),
+    };
+    JSMO.ajax('save-map', data).then(function(response) {
+        handleSaveResponse(response);
+    }).catch(function(err) {
+        showToast('Failed to save data. Check console for details.', 'error');
+        error(err);
+    });
+}
+
+function handleSaveResponse(response) {
+    if (!response || !response.status) {
+        showSaveBlockedDialog('The save request did not complete. Reload the Online Designer and try again.');
+        error(response);
+        return;
+    }
+    if (response && response.status == 'conflict') {
+        showSaveConflictDialog(response.message);
+        return;
+    }
+    if (response.status == 'blocked') {
+        showSaveBlockedDialog(response.message);
+        return;
+    }
+    if (response.configHash) {
+        editorData.configHash = response.configHash;
+    }
+    hideSaveConflictDialog();
+    hideSaveBlockedDialog();
+    if (response.status == 'unchanged') {
+        showToast(response.message || 'No changes to save.', 'info');
+    }
+    else if (response.status == 'saved') {
+        showToast('Map data was successfully saved.', 'success');
+    }
+    else {
+        showSaveBlockedDialog('The save request returned an unexpected status. Reload the Online Designer and try again.');
+        error(response);
+        return;
+    }
+    executeEditorAction('cancel', $());
 }
 
 
@@ -2292,6 +2379,19 @@ function executeEditorAction(action, $row, event) {
         break;
         case 'style-delete-cancel': {
             hideStyleDeleteDialog();
+        }
+        break;
+        case 'save-conflict-confirm': {
+            hideSaveConflictDialog();
+            saveMap(true);
+        }
+        break;
+        case 'save-conflict-cancel': {
+            hideSaveConflictDialog();
+        }
+        break;
+        case 'save-blocked-close': {
+            hideSaveBlockedDialog();
         }
         break;
         case 'style-copy': {
@@ -2408,6 +2508,8 @@ function executeEditorAction(action, $row, event) {
             $editor.find('select.assignables').selectpicker('destroy');
             hideShapeChangeDialog();
             hideStyleDeleteDialog();
+            hideSaveConflictDialog();
+            hideSaveBlockedDialog();
             hideStylePanel();
             $editor.find('.empty-on-close').children().remove();
             $editor.find('.remove-on-close').remove();
@@ -2420,22 +2522,7 @@ function executeEditorAction(action, $row, event) {
         }
         break;
         case 'apply': {
-            clearCurrentArea();
-            const data = {
-                fieldName: editorData.fieldName,
-                formName: editorData.formName,
-                bounds: editorData.bounds,
-                'two-way': $editor.find('input[name=two-way]').prop('checked'),
-                styles: stylesToMap(),
-                map: areasToMap(),
-            }
-            JSMO.ajax('save-map', data).then(function() {
-                showToast('Map data was successfully saved.');
-                executeEditorAction('cancel', $());
-            }).catch(function(err) {
-                showToast('Failed to save data. Check console for details.', true);
-                error(err);
-            });
+            saveMap(false);
         }
         break;
         //#endregion
@@ -2477,15 +2564,38 @@ function generateUUID() {
 
 /**
  * Shows a message in a toast
- * @param {string} msg 
- * @param {boolean} isError
+ * @param {string} msg
+ * @param {'info'|'warning'|'error'|'success'|'dark'|'light'|boolean} type
+ * @param {number} delay
+ * @param {string|null} title
  */
-function showToast(msg, isError = false) {
+function showToast(msg, type = 'success', delay = 1000, title = null) {
+    if (type === true) type = 'error';
+    if (type === false) type = 'success';
+    const toastType = ['info', 'warning', 'error', 'success', 'dark', 'light'].includes(type) ? type : 'success';
+    const toastTitle = title || getToastTitle(toastType);
     // @ts-ignore
-    const toastId = window.showToast("Easy Imagemap", msg, 'success', 1000);
-    if (isError) {
+    const toastId = window.showToast(toastTitle, msg, toastType, delay);
+    if (toastType == 'error') {
         error($('#' + toastId).text());
     }
+}
+
+function getToastTitle(type) {
+    const labels = {
+        error: getLangLabel('global_01', 'ERROR'),
+        warning: getLangLabel('global_48', 'WARNING'),
+        success: getLangLabel('global_79', 'SUCCESS!'),
+        info: 'Easy Imagemap',
+        dark: 'Easy Imagemap',
+        light: 'Easy Imagemap',
+    };
+    return labels[type] ?? 'Easy Imagemap';
+}
+
+function getLangLabel(key, fallback) {
+    // @ts-ignore
+    return window.lang && window.lang[key] ? window.lang[key] : fallback;
 }
 
 //#endregion

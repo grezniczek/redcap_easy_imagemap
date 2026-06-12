@@ -78,19 +78,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
     {
         $this->init_proj($project_id);
-        switch ($action) {
-            case "get-fields":
-                return $this->get_qualifying_fields($payload);
-
-            case "edit-map":
-                return $this->get_field_info($payload);
-
-            case "save-map":
-                return $this->save_eim_data($payload);
-
-            default:
-                return null;
+        $user = $this->framework->getUser($user_id);
+        $rights = $user->getRights($project_id);
+        // All actions require design rights
+        if ($rights["design"] == "1") {
+            switch ($action) {
+                case "get-fields":
+                    return $this->get_qualifying_fields($payload);
+    
+                case "edit-map":
+                    return $this->get_field_info($payload);
+    
+                case "save-map":
+                    return $this->save_eim_data($payload);
+            }
         }
+        return null;
     }
 
     #endregion
@@ -338,6 +341,29 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             </div>
                         </div>
                     </div>
+                    <div class="eim-save-conflict-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-save-conflict-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-save-conflict-title">Overwrite newer changes?</h5>
+                            <p data-eim-save-conflict-message>
+                                The Easy Imagemap configuration changed after you opened the designer. Overwrite it with your current version?
+                            </p>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="save-conflict-cancel" class="btn btn-secondary btn-sm">No</button>
+                                <button type="button" data-action="save-conflict-confirm" class="btn btn-danger btn-sm">Overwrite</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="eim-save-blocked-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-save-blocked-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-save-blocked-title"><?= RCView::tt("global_01") // ERROR ?></h5>
+                            <p data-eim-save-blocked-message>
+                                This Easy Imagemap configuration cannot be saved right now.
+                            </p>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="save-blocked-close" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel ?></button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="modal-body">
                         <div class="area-assignments">
                             <div class="area-assignments-intro">
@@ -534,7 +560,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     foreach ($enum as $code => $label) {
                         $options[] = array(
                             "code" => "{$this_field_name}:{$code}",
-                            "label" => $label,
+                            "label" => strip_tags($label),
                         );
                     }
                     $assignables[] = array(
@@ -552,6 +578,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "fieldName" => $field_name,
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
+            "configHash" => $this->get_map_config_hash($map_config),
             "map" => $map_config["shapes"],
             "bounds" => $map_config["bounds"],
             "styles" => $map_config["styles"],
@@ -591,22 +618,41 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     /**
      * Saves designer data in a field's Action Tag / Field Annotation ('misc')
      * @param Array $data 
-     * @return true 
+     * @return array
      * @throws Exception Throws in case of failure
      */
     private function save_eim_data($data)
     {
         $this->require_proj();
+        $save_block_message = $this->get_designer_save_block_message();
+        if ($save_block_message !== "") {
+            return [
+                "status" => "blocked",
+                "message" => $save_block_message,
+            ];
+        }
         $field_name = $data["fieldName"];
         $form_name = $data["formName"];
         $map = $data["map"] ?? [];
+        $loaded_hash = (string)($data["configHash"] ?? "");
+        $overwrite = !empty($data["overwrite"]);
         $qualified_fields = $this->get_qualifying_fields($form_name);
         if (!array_key_exists($field_name, $qualified_fields)) {
             throw new Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
         }
         $field_data = $this->get_field_metadata($field_name);
-        $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
+        $at = ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG);
+        $at = array_pop($at);
         $search = $at["match"];
+        $current_params = trim($at["params"]);
+        if ($current_params == "") $current_params = "{}";
+        try {
+            $current_params = json_decode($current_params, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable $_) {
+            throw new Exception("Failed to parse " . self::ACTIONTAG . " parameter for field '$field_name' (invalid JSON). Fix or remove/reset it manually!");
+        }
+        $current_store = MapDataHelper::normalize($current_params);
+        $current_hash = $this->get_map_config_hash($current_store);
         $store = MapDataHelper::normalize([
             "version" => MapDataHelper::SCHEMA_VERSION,
             "shapes" => $map,
@@ -615,6 +661,21 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         ]);
         if (count($store["shapes"]) !== count($map)) {
             throw new Exception("One or more areas have an invalid or incomplete shape. Complete or remove them before saving.");
+        }
+        $new_hash = $this->get_map_config_hash($store);
+        if (hash_equals($current_hash, $new_hash)) {
+            return [
+                "status" => "unchanged",
+                "configHash" => $current_hash,
+                "message" => "No changes to save.",
+            ];
+        }
+        if ($loaded_hash !== "" && !hash_equals($current_hash, $loaded_hash) && !$overwrite) {
+            return [
+                "status" => "conflict",
+                "configHash" => $current_hash,
+                "message" => "The Easy Imagemap configuration changed after you opened the designer. Overwrite it with your current version?",
+            ];
         }
         $this->validate_map_config($form_name, $store);
         $json = json_encode($store, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
@@ -627,7 +688,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         if (!$q) {
             throw new Exception("Failed to update the database. Error: " . db_error());
         }
-        return true;
+        \REDCap::logEvent(
+            "Design",
+            "Easy Imagemap configuration saved for field '$field_name' on instrument '$form_name' (" . count($store["shapes"]) . " areas, " . count($store["styles"]) . " styles).",
+            $sql,
+            null,
+            null,
+            $this->project_id
+        );
+        return [
+            "status" => "saved",
+            "configHash" => $new_hash,
+        ];
     }
 
     private function validate_map_config($form_name, $store)
@@ -719,6 +791,20 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     {
         $this->require_proj();
         return $this->is_draft_preview() ? "redcap_metadata_temp" : "redcap_metadata";
+    }
+
+    private function get_designer_save_block_message()
+    {
+        $this->require_proj();
+        if (intval($this->proj->project["status"] ?? 0) > 0 && intval($this->proj->project["draft_mode"] ?? 0) <= 0) {
+            return "This project is in production and is not in draft mode. Open draft mode before saving Easy Imagemap changes.";
+        }
+        return "";
+    }
+
+    private function get_map_config_hash($store)
+    {
+        return hash("sha256", json_encode($store, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     }
 
     private function is_draft_preview()

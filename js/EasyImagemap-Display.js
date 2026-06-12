@@ -373,6 +373,47 @@ function setupInteractivity(field, id, type, target, code, mode) {
     }
 }
 
+function escapeSelector(value) {
+    const stringValue = (value ?? '').toString();
+    return typeof $.escapeSelector == 'function' ? $.escapeSelector(stringValue) : stringValue.replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+}
+
+function attrEquals(name, value) {
+    return '[' + name + '="' + escapeSelector(value) + '"]';
+}
+
+function elementById(id) {
+    return $('#' + escapeSelector(id));
+}
+
+function elementsByName(tag, name) {
+    return $(tag + '[name=' + escapeSelector(name) + ']');
+}
+
+function checkboxInput(target, code) {
+    return elementsByName('input', '__chk__' + target + '_RC_' + code);
+}
+
+function checkboxControl(target, code) {
+    return elementById('id-__chk__' + target + '_RC_' + code);
+}
+
+function radioInput(target, code) {
+    return elementById('opt-' + target + '_' + code);
+}
+
+function radioGroup(target) {
+    return elementsByName('input', target + '___radio');
+}
+
+function selectInput(target) {
+    return elementsByName('select', target);
+}
+
+function autocompleteInput(target) {
+    return elementById('rc-ac-input_' + target);
+}
+
 /**
  * Checks the value associated with an imagemap area
  * @param {string} type 
@@ -384,7 +425,7 @@ function checkTargetValue(type, target, code) {
     let val = '';
     switch (type) {
         case 'checkbox': {
-            val = ($('input[name="__chk__' + target + '_RC_' + code + '"]').val() ?? '').toString();
+            val = (checkboxInput(target, code).val() ?? '').toString();
         }
         break;
         case 'yesno':
@@ -394,7 +435,7 @@ function checkTargetValue(type, target, code) {
         }
         break;
         case 'select': {
-            val = ($('select[name="' + target + '"]').val() ?? '').toString();
+            val = (selectInput(target).val() ?? '').toString();
         }
         break;
     }
@@ -415,19 +456,19 @@ function checkTargetValue(type, target, code) {
 function checkTargetDisabled(type, target, code) {
     switch (type) {
         case 'checkbox': {
-            return $('input[name="__chk__' + target + '_RC_' + code + '"]').prop('disabled');
+            return checkboxInput(target, code).prop('disabled');
         }
         case 'yesno':
         case 'truefalse':
         case 'radio': {
             if (code == '') {
                 // Special handling of reset link - check any option instead
-                return  $('input[id*="opt-' + target + '_"]').prop('disabled');
+                return radioGroup(target).prop('disabled');
             }
-            return $('#opt-' + target + '_' + code).prop('disabled');
+            return radioInput(target, code).prop('disabled');
         }
         case 'select': {
-            return $('select[name="' + target + '"]').prop('disabled');
+            return selectInput(target).prop('disabled');
         }
     }
     return true;
@@ -446,7 +487,7 @@ function checkTargetDisabled(type, target, code) {
 function setTargetValue(field, id, type, target, code) {
     switch (type) {
         case 'checkbox': {
-            $('#id-__chk__' + target + '_RC_' + code).trigger('click');
+            checkboxControl(target, code).trigger('click');
             updateAreaClass(field, id, type, target, code);
         }
         break;
@@ -459,17 +500,17 @@ function setTargetValue(field, id, type, target, code) {
                 document.forms['form'][target].value = '';
             }
             else {
-                $('#opt-' + target + '_' + code).trigger('click');
+                radioInput(target, code).trigger('click');
             }
             updateAreaClass(field, id, type, target, code);
         }
         break;
         case 'select': {
-            const $select = $('select[name="' + target + '"]');
+            const $select = selectInput(target);
             $select.val(code);
             // In case this is an autocomplete dropdown, set the value of the text input
-            const text = $select.find('option[value="' + code + '"]').text();
-            $('#rc-ac-input_' + target).val(text);
+            const text = $select.find('option' + attrEquals('value', code)).text();
+            autocompleteInput(target).val(text);
             $select.trigger('change');
             updateAreaClass(field, id, type, target, code);
         }
@@ -492,7 +533,7 @@ function setTargetValue(field, id, type, target, code) {
 function setupTwoWayBinding(field, id, targetType, target, code) {
     switch (targetType) {
         case 'checkbox': {
-            const $el = $('input[name="__chk__' + target + '_RC_' + code + '"]')
+            const $el = checkboxInput(target, code)
             $el.on('change', function() {
                 updateAreaClass(field, id, targetType, target, code);
             });
@@ -503,7 +544,7 @@ function setupTwoWayBinding(field, id, targetType, target, code) {
         case 'truefalse':
         case 'radio': {
             if (code != '') {
-                const $el = $('input[type="radio"][name="' + target + '___radio"]');
+                const $el = radioGroup(target).filter('[type=radio]');
                 $el.on('change', function() {
                     updateAreaClass(field, id, targetType, target, code);
                 });
@@ -519,17 +560,17 @@ function setupTwoWayBinding(field, id, targetType, target, code) {
         }
         break;
         case 'select': {
-            const $el = $('select[name="' + target + '"]');
+            const $el = selectInput(target);
             const bound = $el.attr('data-two-way-bound') ?? '';
             // Already bound?
             if (!bound.includes(':' + field)) {
                 // Note that binding has been established
                 $el.attr('data-two-way-bound', bound + ':' + field);
                 $el.on('change', function() {
-                    const $svg = $('svg[data-field="' + field + '"]');
+                    const $svg = $('svg' + attrEquals('data-field', field));
                     const this_target = ($el.attr('name') ?? '').toString();
                     const this_code = ($el.val() ?? '').toString();
-                    const this_id = $svg.find('[data-target="' + this_target + '"][data-code="' + this_code + '"]').attr('id') ?? ''
+                    const this_id = $svg.find(attrEquals('data-target', this_target) + attrEquals('data-code', this_code)).attr('id') ?? ''
                     updateAreaClass(field, this_id, targetType, this_target, this_code);
                 });
             }

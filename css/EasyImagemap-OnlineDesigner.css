@@ -36,7 +36,9 @@
     position: relative;
 }
 .eim-editor .eim-shape-change-dialog,
-.eim-editor .eim-style-delete-dialog {
+.eim-editor .eim-style-delete-dialog,
+.eim-editor .eim-save-conflict-dialog,
+.eim-editor .eim-save-blocked-dialog {
     position: absolute;
     inset: 0;
     z-index: 20;
