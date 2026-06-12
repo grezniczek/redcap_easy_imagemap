@@ -54,7 +54,7 @@ function initialize(config_data, jsmo) {
                 setupAddMap(mapField, config.maps[mapField], retryCount);
             }
             catch(ex) {
-                error('Failed to setup map for field \'' + mapField + '\'.', ex);
+                error(tt('display_failed_setup_map', 'Failed to setup map for field {field}.', { field: mapField }), ex);
             }
         }
         const endTime = performance.now();
@@ -335,7 +335,7 @@ function addInteractivity(field) {
         }
     }
     catch(ex) {
-        error('Failed to add interactive features for map field \'' + field + '\'.', ex);
+        error(tt('display_failed_add_interactivity', 'Failed to add interactive features for map field {field}.', { field: field }), ex);
     }
 }
 
@@ -671,6 +671,14 @@ function generateUUID() {
 //#endregion
 
 //#region Debug Logging
+
+function tt(key, fallback, replacements = {}) {
+    let text = (config.lang && config.lang[key]) ? config.lang[key] : fallback;
+    Object.keys(replacements).forEach(name => {
+        text = text.replace(new RegExp('\\{' + name + '\\}', 'g'), replacements[name]);
+    });
+    return text;
+}
 
 /**
  * Logs a message to the console when in debug mode

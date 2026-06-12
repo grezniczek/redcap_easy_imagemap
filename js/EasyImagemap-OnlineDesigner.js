@@ -90,7 +90,11 @@ function addOnlineDesignerButtons() {
     for (let fieldName of Object.keys(config.fields)) {
         log('Adding button for field ' + fieldName);
 
-        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs"><i class="fa-solid fa-draw-polygon eim-icon me-1"></i> Configure Imagemap</button></div>');
+        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"></div>');
+        $('<button class="btn btn-defaultrc btn-xs"></button>')
+            .append('<i class="fa-solid fa-draw-polygon eim-icon me-1"></i>')
+            .append(document.createTextNode(' ' + tt('button_configure_imagemap', 'Configure Imagemap')))
+            .appendTo($btn);
         $btn.on('click', function(e) {
             e.preventDefault();
             $btn.prop('disabled', true);
@@ -202,7 +206,9 @@ function editImageMap() {
     const h = $img.height();
     // Build the assignable box
     assignableLabels = {};
-    $selectTemplate = $('<select><option value="" data-content="(not assigned)"></option></select>');
+    const notAssigned = tt('option_not_assigned', '(not assigned)');
+    $selectTemplate = $('<select></select>');
+    $('<option></option>').val('').attr('data-content', notAssigned).text(notAssigned).appendTo($selectTemplate);
     for (let assignable of editorData.assignables) {
         for (let option of assignable.options) {
             const content = assignableOptionContent(assignable, option);
@@ -2009,7 +2015,7 @@ function setCurrentEditArea(id) {
     updateStyleControls();
     }
     catch (ex) {
-        showToast('Failed to initialize area. Check console for details.', 'error');
+        showToast(tt('toast_failed_initialize_area', 'Failed to initialize area. Check console for details.'), 'error');
         error(ex);
     }
     log('Activated area:', area);
@@ -2147,7 +2153,7 @@ function showShapeChangeDialog(type) {
     const from = shapeLabel(editorData.areas[currentAreaId].type);
     const to = shapeLabel(type);
     const $dialog = $editor.find('.eim-shape-change-dialog');
-    $dialog.find('p').text(`${from} will be converted to ${to}. Existing placement will be preserved as closely as possible.`);
+    $dialog.find('p').text(tt('dialog_shape_change_message', '{from} will be converted to {to}. Existing placement will be preserved as closely as possible.', { from: from, to: to }));
     $dialog.find('[data-eim-shape-change-skip]').prop('checked', false);
     $dialog.css('display', 'flex');
 }
@@ -2172,11 +2178,11 @@ function confirmShapeChange() {
 
 function shapeLabel(type) {
     return {
-        circle: 'Circle',
-        ell: 'Ellipse',
-        rect: 'Rectangle',
-        poly: 'Polygon',
-    }[type] ?? 'Shape';
+        circle: tt('shape_circle', 'Circle'),
+        ell: tt('shape_ellipse', 'Ellipse'),
+        rect: tt('shape_rectangle', 'Rectangle'),
+        poly: tt('shape_polygon', 'Polygon'),
+    }[type] ?? tt('shape_unknown', 'Shape');
 }
 
 function getShapeType() {
@@ -2325,7 +2331,7 @@ function updateStyleDeleteButtonState() {
     const $button = $editor.find('[data-action="style-delete-start"]');
     const $wrapper = $editor.find('[data-style-delete-wrapper]');
     $button.prop('disabled', !canDelete);
-    $wrapper.attr('title', canDelete ? 'Delete selected style' : 'The last remaining style cannot be deleted');
+    $wrapper.attr('title', canDelete ? tt('tooltip_delete_style', 'Delete selected style') : tt('tooltip_delete_style_disabled', 'The last remaining style cannot be deleted'));
 }
 
 function applyStyleToSwatch($swatch, style) {
@@ -2430,7 +2436,7 @@ function hideStylePanel() {
 }
 
 function showNewStyleInput() {
-    const base = uniqueStyleName('style');
+    const base = uniqueStyleName(tt('style_name_base', 'style'));
     const $panel = $editor.find('.eim-style-new');
     $panel.css('display', 'flex');
     $panel.find('[data-style-new-name]').val(base).trigger('focus').trigger('select');
@@ -2444,11 +2450,11 @@ function addNamedStyle() {
     const $input = $editor.find('[data-style-new-name]');
     const name = normalizeStyleName($input.val());
     if (!name) {
-        showToast('Enter a style name.', 'warning');
+        showToast(tt('toast_enter_style_name', 'Enter a style name.'), 'warning');
         return;
     }
     if (editorData.styles[name]) {
-        showToast('A style with that name already exists.', 'warning');
+        showToast(tt('toast_style_name_exists', 'A style with that name already exists.'), 'warning');
         return;
     }
     editorData.styles[name] = getStyleByName(getSelectedStyleName());
@@ -2487,9 +2493,10 @@ function showStyleDeleteDialog(name, assignedCount) {
         if (styleName == name) return;
         $('<option></option>').attr('value', styleName).text(styleName).appendTo($select);
     });
-    $dialog.find('[data-eim-style-delete-message]').text(
-        `Style "${name}" is assigned to ${assignedCount} area${assignedCount == 1 ? '' : 's'}. Choose a replacement style before deleting it.`
-    );
+    $dialog.find('[data-eim-style-delete-message]').text(tt('dialog_style_delete_message', 'Style "{name}" is assigned to {count} area(s). Choose a replacement style before deleting it.', {
+        name: name,
+        count: assignedCount,
+    }));
     $dialog.css('display', 'flex');
 }
 
@@ -2500,7 +2507,7 @@ function hideStyleDeleteDialog() {
 
 function showSaveConflictDialog(message) {
     const $dialog = $editor.find('.eim-save-conflict-dialog');
-    $dialog.find('[data-eim-save-conflict-message]').text(message || 'The Easy Imagemap configuration changed after you opened the designer. Overwrite it with your current version?');
+    $dialog.find('[data-eim-save-conflict-message]').text(message || tt('dialog_save_conflict_message', 'The Easy Imagemap configuration changed after you opened the designer. Overwrite it with your current version?'));
     $dialog.css('display', 'flex');
 }
 
@@ -2510,7 +2517,7 @@ function hideSaveConflictDialog() {
 
 function showSaveBlockedDialog(message) {
     const $dialog = $editor.find('.eim-save-blocked-dialog');
-    $dialog.find('[data-eim-save-blocked-message]').text(message || 'This Easy Imagemap configuration cannot be saved right now.');
+    $dialog.find('[data-eim-save-blocked-message]').text(message || tt('dialog_save_blocked_message', 'This Easy Imagemap configuration cannot be saved right now.'));
     $dialog.css('display', 'flex');
 }
 
@@ -2590,14 +2597,14 @@ function saveMap(overwrite) {
     JSMO.ajax('save-map', data).then(function(response) {
         handleSaveResponse(response);
     }).catch(function(err) {
-        showToast('Failed to save data. Check console for details.', 'error');
+        showToast(tt('toast_failed_save', 'Failed to save data. Check console for details.'), 'error');
         error(err);
     });
 }
 
 function handleSaveResponse(response) {
     if (!response || !response.status) {
-        showSaveBlockedDialog('The save request did not complete. Reload the Online Designer and try again.');
+        showSaveBlockedDialog(tt('dialog_save_missing_response', 'The save request did not complete. Reload the Online Designer and try again.'));
         error(response);
         return;
     }
@@ -2615,13 +2622,13 @@ function handleSaveResponse(response) {
     hideSaveConflictDialog();
     hideSaveBlockedDialog();
     if (response.status == 'unchanged') {
-        showToast(response.message || 'No changes to save.', 'info');
+        showToast(response.message || tt('toast_no_changes', 'No changes to save.'), 'info');
     }
     else if (response.status == 'saved') {
-        showToast('Map data was successfully saved.', 'success');
+        showToast(tt('toast_saved', 'Map data was successfully saved.'), 'success');
     }
     else {
-        showSaveBlockedDialog('The save request returned an unexpected status. Reload the Online Designer and try again.');
+        showSaveBlockedDialog(tt('dialog_save_unexpected_response', 'The save request returned an unexpected status. Reload the Online Designer and try again.'));
         error(response);
         return;
     }
@@ -2918,16 +2925,24 @@ function showToast(msg, type = 'success', delay = 1000, title = null) {
     }
 }
 
+function tt(key, fallback, replacements = {}) {
+    let text = (config.lang && config.lang[key]) ? config.lang[key] : fallback;
+    Object.keys(replacements).forEach(name => {
+        text = text.replace(new RegExp('\\{' + name + '\\}', 'g'), replacements[name]);
+    });
+    return text;
+}
+
 function getToastTitle(type) {
     const labels = {
         error: getLangLabel('global_01', 'ERROR'),
         warning: getLangLabel('global_48', 'WARNING'),
         success: getLangLabel('global_79', 'SUCCESS!'),
-        info: 'Easy Imagemap',
-        dark: 'Easy Imagemap',
-        light: 'Easy Imagemap',
+        info: tt('app_title', 'Easy Imagemap'),
+        dark: tt('app_title', 'Easy Imagemap'),
+        light: tt('app_title', 'Easy Imagemap'),
     };
-    return labels[type] ?? 'Easy Imagemap';
+    return labels[type] ?? tt('app_title', 'Easy Imagemap');
 }
 
 function getLangLabel(key, fallback) {
