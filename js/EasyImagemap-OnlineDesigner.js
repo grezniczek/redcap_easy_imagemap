@@ -20,6 +20,7 @@ let editorData = null;
 let editorSavedState = '';
 let suppressBeforeUnload = false;
 let pendingUnsavedAction = null;
+let $targetPickerMenu = $();
 
 /** @type {string} The current area */
 let currentAreaId = ''
@@ -222,6 +223,8 @@ function editImageMap() {
             $('<option></option>')
                 .val(option.code)
                 .attr('data-content', content)
+                .attr('data-eim-target-field', assignable.name)
+                .attr('data-eim-target-label', option.label)
                 .text('[' + assignable.name + '] ' + option.label)
                 .appendTo($selectTemplate);
         }
@@ -1716,7 +1719,7 @@ function handleKeyEvent(e) {
 function shouldIgnoreKeyboardEvent(e) {
     const $target = $(e.target);
     return $target.is('input, textarea, select, button, a')
-        || $target.closest('.bootstrap-select, .dropdown-menu, [contenteditable="true"]').length > 0;
+        || $target.closest('.bootstrap-select, .dropdown-menu, .eim-target-picker, .eim-target-picker-menu, [contenteditable="true"]').length > 0;
 }
 
 function keyMoveDelta(key, step = 1) {
@@ -2489,30 +2492,82 @@ function addTableRow(id, afterId = '') {
     else {
         $editor.find('tr[data-area-id="' + afterId + '"]').after($row);
     }
+    sortAssignableOptions($select);
     initializeAssignableSelect($select);
     // Add background shape
     updateBackgroundShape(id);
 }
 
 function initializeAssignableSelect($select) {
-    // Render the menu outside the scrollable assignments table so it can overlap the style panel cleanly.
-    $select.on('shown.bs.select loaded.bs.select rendered.bs.select', function(event) {
-        updateAssignableSelectVisuals($select);
-        if (event.type == 'shown') {
-            setTimeout(() => updateAssignableSelectVisuals($select), 0);
-        }
-    });
-    // @ts-ignore
-    $select.selectpicker({
-        container: '.eim-editor'
+    $select.addClass('eim-target-native-select').attr('tabindex', '-1').hide();
+    const $picker = $('<div></div>').addClass('eim-target-picker');
+    const $button = $('<button></button>')
+        .attr('type', 'button')
+        .addClass('btn btn-light btn-sm eim-target-picker-toggle')
+        .append($('<span></span>').addClass('eim-target-picker-value'))
+        .append($('<i></i>').addClass('fa-solid fa-caret-down eim-target-picker-caret'));
+    $picker.append($button);
+    $select.after($picker);
+    $button.on('click', function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        openTargetPicker($select);
     });
     updateAssignableSelectVisuals($select);
 }
 
+function activateAreaForAssignableSelect($select) {
+    const id = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    if (!id || currentAreaId == id || !editorData.areas[id]) return;
+    setMode('edit');
+    setCurrentEditArea(id, true);
+}
+
 function updateAssignableSelectVisuals($select) {
-    tagAssignableSelectpickerContainer($select);
-    decorateAssignableMenu($select);
-    sanitizeAssignableButton($select);
+    renderTargetPickerButton($select);
+    if ($targetPickerMenu.length && $targetPickerMenu.data('select') === $select[0]) {
+        renderTargetPickerOptions($select, $targetPickerMenu);
+    }
+}
+
+function sortAssignableOptions($select) {
+    const currentValue = ($select.val() ?? '').toString();
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const usedTargets = assignedTargets(currentId);
+    const original = $select.find('option').get();
+    const sorted = original
+        .map((option, idx) => ({ option: option, meta: assignableOptionSortMeta($(option), usedTargets, idx) }))
+        .sort((a, b) => compareAssignableSortMeta(a.meta, b.meta))
+        .map(item => item.option);
+    const changed = sorted.some((option, idx) => option !== original[idx]);
+    if (changed) {
+        $select.children().remove();
+        sorted.forEach(option => $select.append(option));
+        $select.val(currentValue);
+    }
+    return changed;
+}
+
+function assignableOptionSortMeta($option, usedTargets, idx) {
+    const code = ($option.val() ?? '').toString();
+    return {
+        blank: code == '',
+        used: !!code && usedTargets.has(code),
+        field: ($option.attr('data-eim-target-field') ?? '').toString(),
+        label: ($option.attr('data-eim-target-label') ?? $option.text()).toString(),
+        idx: idx,
+    };
+}
+
+function compareAssignableSortMeta(a, b) {
+    if (!a || !b) return 0;
+    if (a.blank != b.blank) return a.blank ? -1 : 1;
+    if (a.used != b.used) return a.used ? 1 : -1;
+    const fieldCompare = a.field.localeCompare(b.field, undefined, { sensitivity: 'base', numeric: true });
+    if (fieldCompare != 0) return fieldCompare;
+    const labelCompare = a.label.localeCompare(b.label, undefined, { sensitivity: 'base', numeric: true });
+    if (labelCompare != 0) return labelCompare;
+    return a.idx - b.idx;
 }
 
 function updateAllAssignableSelectVisuals() {
@@ -2521,30 +2576,158 @@ function updateAllAssignableSelectVisuals() {
     });
 }
 
-function decorateAssignableMenu($select) {
-    const picker = $select.data('selectpicker');
-    if (!picker) return;
+function openTargetPicker($select) {
+    closeTargetPicker();
+    activateAreaForAssignableSelect($select);
+    sortAssignableOptions($select);
+    const $button = getTargetPickerButton($select);
+    if (!$button.length) return;
+    const $menu = $('<div></div>')
+        .addClass('eim-target-picker-menu remove-on-close')
+        .data('select', $select[0]);
+    const $search = $('<input>')
+        .attr('type', 'search')
+        .addClass('form-control form-control-sm mb-1 eim-target-picker-search')
+        .attr('autocomplete', 'off');
+    const $list = $('<div></div>').addClass('eim-target-picker-list');
+    $menu.append($search).append($list);
+    $menu.on('click', function(event) {
+        event.stopPropagation();
+    });
+    $search.on('input', function() {
+        filterTargetPickerOptions($menu, $(this).val());
+    });
+    $search.on('keydown', function(event) {
+        if (event.key == 'Escape') {
+            closeTargetPicker();
+            $button.trigger('focus');
+        }
+        else if (event.key == 'ArrowDown') {
+            event.preventDefault();
+            $menu.find('.eim-target-picker-item:visible').first().trigger('focus');
+        }
+    });
+    $editor.append($menu);
+    $targetPickerMenu = $menu;
+    renderTargetPickerOptions($select, $menu);
+    positionTargetPickerMenu($button, $menu);
+    $(document).off('mousedown.eimTargetPicker').on('mousedown.eimTargetPicker', function(event) {
+        if ($(event.target).closest('.eim-target-picker-menu, .eim-target-picker').length == 0) closeTargetPicker();
+    });
+    $search.trigger('focus');
+}
+
+function closeTargetPicker() {
+    if ($targetPickerMenu.length) {
+        $targetPickerMenu.remove();
+        $targetPickerMenu = $();
+    }
+    $(document).off('mousedown.eimTargetPicker');
+}
+
+function renderTargetPickerButton($select) {
+    const $button = getTargetPickerButton($select);
+    if (!$button.length) return;
+    const $selected = $select.find('option:selected').first();
     const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
-    const usedTargets = assignedTargets(currentId);
+    const isUsed = isOptionUsed($selected, currentId);
+    const $content = $('<span></span>').html($selected.attr('data-content') || $selected.text());
+    decorateTargetOption($content, isUsed);
+    $button.find('.eim-target-picker-value')
+        .toggleClass('eim-target-picker-value-empty', (($selected.val() ?? '').toString() == ''))
+        .html($content.html());
+}
+
+function renderTargetPickerOptions($select, $menu) {
+    const currentValue = ($select.val() ?? '').toString();
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const $list = $menu.find('.eim-target-picker-list');
+    $list.empty();
     $select.find('option').each(function() {
-        const code = (this.value ?? '').toString();
-        const isUsed = !!code && usedTargets.has(code);
-        if (!code) return;
-        decorateTargetOption(getAssignableMenuTargets(picker, code), isUsed);
+        const $option = $(this);
+        const value = ($option.val() ?? '').toString();
+        const $content = $('<span></span>').html($option.attr('data-content') || $option.text());
+        decorateTargetOption($content, isOptionUsed($option, currentId));
+        const $item = $('<button></button>')
+            .attr('type', 'button')
+            .addClass('eim-target-picker-item')
+            .toggleClass('active', value == currentValue)
+            .attr('data-value', value)
+            .attr('data-search', targetPickerSearchText($option))
+            .html($content.html());
+        $item.on('click', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            $select.val(value).trigger('change');
+            closeTargetPicker();
+            getTargetPickerButton($select).trigger('focus');
+        });
+        $item.on('keydown', function(event) {
+            handleTargetPickerItemKey(event, $menu);
+        });
+        $list.append($item);
     });
 }
 
-function getAssignableMenuTargets(picker, code) {
-    let $targets = $();
-    const codeClass = targetCodeClass(code);
-    [picker.$menu, picker.$bsContainer, picker.$newElement].forEach($root => {
-        if (!$root || !$root.length) return;
-        $targets = $targets.add($root.find('.eim-target-option.' + codeClass));
-        $targets = $targets.add($root.find('.eim-target-option').filter(function() {
-            return ($(this).attr('data-eim-target-code') ?? '').toString() == code;
-        }));
+function handleTargetPickerItemKey(event, $menu) {
+    if (event.key == 'Escape') {
+        closeTargetPicker();
+        return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const $items = $menu.find('.eim-target-picker-item:visible');
+    const index = $items.index(event.currentTarget);
+    let nextIndex = index;
+    if (event.key == 'ArrowDown') nextIndex = Math.min($items.length - 1, index + 1);
+    if (event.key == 'ArrowUp') nextIndex = Math.max(0, index - 1);
+    if (event.key == 'Home') nextIndex = 0;
+    if (event.key == 'End') nextIndex = $items.length - 1;
+    $items.eq(nextIndex).trigger('focus');
+}
+
+function filterTargetPickerOptions($menu, query) {
+    const needle = (query ?? '').toString().trim().toLowerCase();
+    $menu.find('.eim-target-picker-item').each(function() {
+        const haystack = ($(this).attr('data-search') ?? '').toString();
+        $(this).toggle(needle == '' || haystack.includes(needle));
     });
-    return $targets;
+}
+
+function targetPickerSearchText($option) {
+    return [
+        $option.attr('data-eim-target-field') ?? '',
+        $option.attr('data-eim-target-label') ?? '',
+        $option.text() ?? '',
+    ].join(' ').toLowerCase();
+}
+
+function positionTargetPickerMenu($button, $menu) {
+    const rect = $button[0].getBoundingClientRect();
+    const width = Math.max(220, rect.width);
+    const maxHeight = Math.min(320, Math.max(160, window.innerHeight - 24));
+    const below = window.innerHeight - rect.bottom - 8;
+    const above = rect.top - 8;
+    const openAbove = below < 220 && above > below;
+    const left = clamp(rect.left, 8, Math.max(8, window.innerWidth - width - 8));
+    const top = openAbove
+        ? clamp(rect.top - Math.min(maxHeight, above) - 4, 8, window.innerHeight - 80)
+        : clamp(rect.bottom + 4, 8, window.innerHeight - 80);
+    $menu.css({
+        left: left + 'px',
+        top: top + 'px',
+        width: width + 'px',
+        maxHeight: maxHeight + 'px',
+    });
+}
+
+function getTargetPickerButton($select) {
+    return $select.siblings('.eim-target-picker').find('.eim-target-picker-toggle').first();
+}
+
+function isOptionUsed($option, currentId) {
+    const code = ($option.val() ?? '').toString();
+    return !!code && assignedTargets(currentId).has(code);
 }
 
 function targetCodeClass(code) {
@@ -2578,21 +2761,8 @@ function usedTargetMarkerContent() {
     return $marker;
 }
 
-function sanitizeAssignableButton($select) {
-    const picker = $select.data('selectpicker');
-    if (!picker || !picker.$button) return;
-    const $selected = $select.find('option:selected').first();
-    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
-    const code = ($selected.val() ?? '').toString();
-    const isUsed = !!code && assignedTargets(currentId).has(code);
-    const content = $selected.attr('data-content') || $selected.text();
-    const $content = $('<span></span>').html(content);
-    decorateTargetOption($content, isUsed);
-    picker.$button.find('.filter-option-inner-inner').html($content.html());
-}
-
 function cleanupAssignableSelectpickerContainers() {
-    $('.eim-selectpicker-container').remove();
+    closeTargetPicker();
 }
 
 function assignedTargets(excludeId = '') {
@@ -2603,13 +2773,6 @@ function assignedTargets(excludeId = '') {
         if (area && area.target && areaHasData(area)) targets.add(area.target);
     });
     return targets;
-}
-
-function tagAssignableSelectpickerContainer($select) {
-    const picker = $select.data('selectpicker');
-    if (picker && picker.$bsContainer) {
-        picker.$bsContainer.addClass('eim-selectpicker-container');
-    }
 }
 
 /**
@@ -2948,8 +3111,7 @@ function removeAreaById(id) {
     if (id == currentAreaId) clearCurrentArea();
     delete editorData.areas[id];
     const $row = $('tr[data-area-id="' + id + '"]');
-    // @ts-ignore
-    $row.find('select.assignables').selectpicker('destroy');
+    closeTargetPicker();
     $row.remove();
     $svg.find('[data-id="' + id + '"]').remove();
     removeFromSelection([id]);
@@ -2970,8 +3132,6 @@ function cancelEditor() {
     editorData = null;
     editorSavedState = '';
     pendingUnsavedAction = null;
-    // @ts-ignore
-    $editor.find('select.assignables').selectpicker('destroy');
     cleanupAssignableSelectpickerContainers();
     hideShapeChangeDialog();
     hideStyleDeleteDialog();

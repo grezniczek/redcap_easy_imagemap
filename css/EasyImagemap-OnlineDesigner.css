@@ -216,13 +216,13 @@ tr.area .form-check {
     margin-top: 8px;
 }
 .eim-editor .eim-target-option .badge,
-.eim-editor .bootstrap-select .filter-option-inner-inner .badge,
-.eim-editor .eim-selectpicker-container .dropdown-menu .badge {
+.eim-editor .eim-target-picker .badge,
+.eim-editor .eim-target-picker-menu .badge {
     font-weight: normal !important;
 }
 .eim-editor .eim-target-option .badge i,
-.eim-editor .bootstrap-select .filter-option-inner-inner .badge i,
-.eim-editor .eim-selectpicker-container .dropdown-menu .badge i {
+.eim-editor .eim-target-picker .badge i,
+.eim-editor .eim-target-picker-menu .badge i {
     font-size: 70% !important;
 }
 .eim-editor .eim-target-used-badge {
@@ -232,18 +232,7 @@ tr.area .form-check {
     margin-left: 6px;
     color: #6c4a00;
     border: 1px solid #f0d58a;
-}
-.bootstrap-select .dropdown-menu li a {
-    font-size: 13px;
-}
-.bootstrap-select .dropdown-menu li a:hover {
-    font-size: 13px;
-}
-.eim-editor .bs-container.eim-selectpicker-container {
-    z-index: 1065;
-}
-.eim-editor .bs-container.eim-selectpicker-container .dropdown-menu {
-    z-index: 1066;
+    font-size: 8px;
 }
 svg.eim-svg {
     position: absolute;
@@ -401,14 +390,10 @@ table.eim-areas .eim-action-btn-xs {
     padding: 2px 2px;
     line-height: 1;
 }
-table.eim-areas .bootstrap-select,
 table.eim-areas .assignables,
 table.eim-areas .form-inline {
     min-width: 0;
     max-width: 100%;
-}
-table.eim-areas .bootstrap-select .filter-option-inner-inner:has(.eim-target-option-label) {
-    line-height: 10px;
 }
 .eim-editor .eim-target-option {
     line-height: 1.15;
@@ -416,6 +401,67 @@ table.eim-areas .bootstrap-select .filter-option-inner-inner:has(.eim-target-opt
 .eim-editor .eim-target-option-label {
     display: inline-block;
     margin-top: 2px;
+}
+.eim-editor .eim-target-native-select {
+    display: none !important;
+}
+.eim-editor .eim-target-picker {
+    min-width: 0;
+    max-width: 100%;
+}
+.eim-editor .eim-target-picker-toggle {
+    width: 100%;
+    min-height: 34px;
+    padding: 3px 7px;
+    border-color: #d8dce2;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    text-align: left;
+    background: #fff;
+}
+.eim-editor .eim-target-picker-value {
+    min-width: 0;
+    line-height: 10px;
+    overflow: hidden;
+}
+.eim-editor .eim-target-picker-value-empty {
+    line-height: 16px;
+}
+.eim-editor .eim-target-picker-caret {
+    font-size: 11px;
+}
+.eim-target-picker-menu {
+    position: fixed;
+    z-index: 1068;
+    background: #fff;
+    border: 1px solid #b8c2d1;
+    border-radius: 4px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    padding: 6px;
+    overflow: hidden;
+}
+.eim-target-picker-list {
+    max-height: 260px;
+    overflow-y: auto;
+}
+.eim-target-picker-item {
+    width: 100%;
+    border: 0;
+    background: #fff;
+    border-radius: 3px;
+    padding: 4px 6px;
+    text-align: left;
+    line-height: 1.15;
+}
+.eim-target-picker-item:hover,
+.eim-target-picker-item:focus {
+    background: #e8f1ff;
+    outline: none;
+}
+.eim-target-picker-item.active {
+    background: #d9e9ff;
 }
 .eim-editor .drag-handle {
     cursor: grab;

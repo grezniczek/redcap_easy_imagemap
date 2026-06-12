@@ -483,8 +483,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                                 <div class="area-style-sample"></div>
                                             </td>
                                             <td>
-                                                <div class="form-inline" data-action="assign-target">
-                                                    <select data-live-search="true" class="form-control form-control-sm assignables" data-width="100%">
+                                                <div class="form-inline">
+                                                    <select class="form-control form-control-sm assignables">
                                                         <!-- Assignable field options -->
                                                     </select>
                                                 </div>
