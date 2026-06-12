@@ -20,7 +20,8 @@
     "action-tags": [
         {
             "tag": "@EASYIMAGEMAP",
-            "description": "Converts images in descriptive fields into clickable image maps. Simply add the action tag to a descriptive field that has an image that is displayed inline. Once added, a button to set up the image map will appear in the Online Designer."
+            "description": "config_at_easyimagemap",
+            "tt_description": true
         }
     ],
     "system-settings": [
@@ -28,7 +29,8 @@
     "project-settings": [
         {
             "key": "javascript-debug",
-            "name": "Output debug information to the browser console",
+            "name": "config_javascript_debug",
+            "tt_name": true,
             "type": "checkbox"
         }
     ]
