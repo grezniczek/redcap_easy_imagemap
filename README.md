@@ -14,6 +14,7 @@ The designer saves map configuration as JSON in the action tag parameter. The ac
 @EASYIMAGEMAP={
     "version": 1,
     "bounds": { "width": 500, "height": 467 },
+    "styles": { "default": {} },
     "shapes": []
 }
 ```
@@ -35,17 +36,17 @@ Each area may also include:
 - `label`: optional display label override
 - `tooltip`: optional tooltip text reserved for UI use
 - `mode`: `2-way`, `to-target`, or `from-target`
-- `style`: `regular`, `hover`, and `selected` state styles with fill/stroke colors, opacity, and stroke width
+- `style`: the name of a shared style from the top-level `styles` object
 
 ## Designer Workflow
 
 Open **Configure Imagemap** from Online Designer. Add rows in the assignment table, choose a shape type, draw or edit the area on the image, and assign the row to a target field or choice.
 
-Polygons are edited with point anchors. Circles are edited with a center handle and radius handle. Rectangles and ellipses are edited with a center handle plus width/radius and height/radius handles; dragging either axis handle rotates the shape and keeps the other axis aligned. Hold Shift while dragging an axis handle to keep rectangle width/height or ellipse radii in sync. Move mode can move one or more selected areas.
+Polygons are edited with point anchors. Circles are edited with a center handle and radius handle. Rectangles and ellipses are edited with a center handle plus width/radius and height/radius handles; dragging either axis handle rotates the shape and keeps the other axis aligned. Hold Shift while dragging an axis handle to keep rectangle width/height or ellipse radii in sync. Move mode can move one or more selected areas. Hold Shift while moving shapes to constrain movement to 45-degree steps. Hold Ctrl while dragging in move mode to create translated copies inserted after the originals.
 
 Changing an existing area's shape type converts the geometry instead of deleting it. Rectangles convert to inscribed circles/ellipses; circles and ellipses convert to enclosing rectangles; polygons convert from or to an outer bounding shape. The designer asks for confirmation before morphing and can remember that choice in the browser.
 
-The style panel shows normal, hover, and selected states side by side. Select a state to edit fill, stroke, fill opacity, stroke opacity, and stroke width. The panel can copy the active state style, paste it to another state, sync the active state across all three states, or apply the active state style to selected areas.
+The style panel manages named styles, starting with `default`. Areas reference a style by name, which keeps the JSON compact and makes reuse easier. Choose a style from the selector, add a new style when needed, and apply the selected style to selected areas. The normal, hover, and selected state previews are shown side by side. Select a state to edit fill, stroke, fill opacity, stroke opacity, and stroke width. The panel can copy the active state values, paste them to another state, or sync the active state across all three states.
 
 ## Data Entry And Surveys
 

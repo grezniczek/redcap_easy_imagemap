@@ -32,8 +32,10 @@ let styleClipboard = null;
 let pendingShapeChangeType = '';
 
 const moveStartPos = { x: 0, y: 0 };
+const moveDelta = { x: 0, y: 0 };
 const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
 const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
+const DEFAULT_STYLE_NAME = 'default';
 
 const STYLE_DEFAULTS = {
     regular: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.05, strokeOpacity: 1, strokeWidth: 1 },
@@ -66,6 +68,7 @@ function initialize(config_data, jsmo_obj) {
         $editor = $('.modal.eim-editor');
         $editor.on('click', handleEditorActionEvent);
         $editor.on('input change', '[data-action="style-change"]', handleEditorActionEvent);
+        $editor.on('change', '[data-action="style-select"]', handleEditorActionEvent);
         $editor.on('changed.bs.select change', 'select.assignables', function(e) {
             executeEditorAction('assign-target', $(e.target).parents('tr[data-area-id]'), e);
         });
@@ -222,7 +225,9 @@ function editImageMap() {
     setStyleState('regular');
     editorData.anchors = new Array();
     editorData.selection = new Array();
+    editorData.styles = normalizeStyles(editorData.styles ?? {});
     editorData.areas = areasFromMap(editorData.map);
+    updateStyleSelector();
 
     // Add the rows
     for (let id of Object.keys(editorData.areas)) {
@@ -311,7 +316,7 @@ function areasFromMap(map) {
             label: item.label ?? '',
             tooltip: item.tooltip ?? '',
             target: item.target ?? '',
-            style: normalizeStyle(item.style ?? {}),
+            style: normalizeStyleReference(item.style ?? DEFAULT_STYLE_NAME),
             data: normalizeShapeData(type, item[type] ?? null),
         };
     }
@@ -331,13 +336,17 @@ function areasToMap() {
             mode: area.mode,
             target: area.target,
             tooltip: area.tooltip ?? '',
-            style: normalizeStyle(area.style ?? {}),
+            style: normalizeStyleReference(area.style ?? DEFAULT_STYLE_NAME),
         };
         item[area.type] = area.data;
         map.push(item);
         areaIdx++;
     }
     return map;
+}
+
+function stylesToMap() {
+    return normalizeStyles(editorData.styles ?? {});
 }
 
 //#endregion
@@ -601,19 +610,109 @@ function pointsToPoly(points) {
 }
 
 function normalizeStyle(style) {
-    const normalized = {};
-    for (const state of ['regular', 'hover', 'selected']) {
-        const source = style && typeof style[state] == 'object' ? style[state] : {};
-        const defaults = STYLE_DEFAULTS[state];
+    const source = style && typeof style == 'object' ? style : {};
+    const regularSource = source.regular && typeof source.regular == 'object' ? source.regular : {};
+    const regular = {
+        fill: cleanColor(regularSource.fill, STYLE_DEFAULTS.regular.fill),
+        stroke: cleanColor(regularSource.stroke, STYLE_DEFAULTS.regular.stroke),
+        fillOpacity: cleanOpacity(regularSource.fillOpacity, STYLE_DEFAULTS.regular.fillOpacity),
+        strokeOpacity: cleanOpacity(regularSource.strokeOpacity, STYLE_DEFAULTS.regular.strokeOpacity),
+        strokeWidth: cleanNumber(regularSource.strokeWidth, STYLE_DEFAULTS.regular.strokeWidth),
+    };
+    const normalized = { regular: regular };
+    const dependentDefaults = {
+        hover: {
+            fill: regular.fill,
+            stroke: regular.stroke,
+            fillOpacity: STYLE_DEFAULTS.hover.fillOpacity,
+            strokeOpacity: regular.strokeOpacity,
+            strokeWidth: regular.strokeWidth,
+        },
+        selected: {
+            fill: regular.fill,
+            stroke: regular.stroke,
+            fillOpacity: STYLE_DEFAULTS.selected.fillOpacity,
+            strokeOpacity: regular.strokeOpacity,
+            strokeWidth: regular.strokeWidth,
+        },
+    };
+    for (const state of ['hover', 'selected']) {
+        const stateSource = source[state] && typeof source[state] == 'object' ? source[state] : {};
+        const defaults = dependentDefaults[state];
         normalized[state] = {
-            fill: cleanColor(source.fill, defaults.fill),
-            stroke: cleanColor(source.stroke, defaults.stroke),
-            fillOpacity: cleanOpacity(source.fillOpacity, defaults.fillOpacity),
-            strokeOpacity: cleanOpacity(source.strokeOpacity, defaults.strokeOpacity),
-            strokeWidth: cleanNumber(source.strokeWidth, defaults.strokeWidth),
+            fill: cleanColor(stateSource.fill, defaults.fill),
+            stroke: cleanColor(stateSource.stroke, defaults.stroke),
+            fillOpacity: cleanOpacity(stateSource.fillOpacity, defaults.fillOpacity),
+            strokeOpacity: cleanOpacity(stateSource.strokeOpacity, defaults.strokeOpacity),
+            strokeWidth: cleanNumber(stateSource.strokeWidth, defaults.strokeWidth),
         };
     }
     return normalized;
+}
+
+function normalizeStyles(styles) {
+    const normalized = {};
+    normalized[DEFAULT_STYLE_NAME] = normalizeStyle(styles && typeof styles[DEFAULT_STYLE_NAME] == 'object' ? styles[DEFAULT_STYLE_NAME] : {});
+    if (!styles || typeof styles != 'object') return normalized;
+    Object.keys(styles).forEach(name => {
+        const cleanName = normalizeStyleName(name);
+        if (!cleanName || cleanName == DEFAULT_STYLE_NAME || typeof styles[name] != 'object') return;
+        normalized[cleanName] = normalizeStyle(styles[name]);
+    });
+    return normalized;
+}
+
+function normalizeStyleName(name) {
+    const clean = (name ?? '').toString().trim().replace(/\s+/g, ' ');
+    return clean.length > 0 && clean.length <= 64 ? clean : '';
+}
+
+function normalizeStyleReference(style) {
+    if (typeof style == 'string') {
+        const name = normalizeStyleName(style);
+        return name && editorData.styles[name] ? name : DEFAULT_STYLE_NAME;
+    }
+    if (style && typeof style == 'object') {
+        return addStyleFromInline(style);
+    }
+    return DEFAULT_STYLE_NAME;
+}
+
+function addStyleFromInline(style) {
+    const normalized = normalizeStyle(style);
+    const signature = styleSignature(normalized);
+    for (const name of Object.keys(editorData.styles)) {
+        if (styleSignature(editorData.styles[name]) == signature) return name;
+    }
+    const name = uniqueStyleName('style');
+    editorData.styles[name] = normalized;
+    return name;
+}
+
+function uniqueStyleName(baseName) {
+    const base = normalizeStyleName(baseName) || 'style';
+    if (!editorData.styles[base]) return base;
+    let idx = 2;
+    while (editorData.styles[`${base} ${idx}`]) idx++;
+    return `${base} ${idx}`;
+}
+
+function styleSignature(style) {
+    return JSON.stringify(normalizeStyle(style));
+}
+
+function getStyleNameForArea(area) {
+    return normalizeStyleReference(area ? area.style : DEFAULT_STYLE_NAME);
+}
+
+function getStyleByName(name) {
+    name = normalizeStyleName(name);
+    if (!name || !editorData.styles[name]) name = DEFAULT_STYLE_NAME;
+    return normalizeStyle(editorData.styles[name] ?? {});
+}
+
+function getAreaStyle(area) {
+    return getStyleByName(getStyleNameForArea(area));
 }
 
 function cleanColor(value, fallback) {
@@ -938,6 +1037,37 @@ function moveSelection(dx, dy) {
     }
 }
 
+function duplicateSelection(dx, dy) {
+    const copies = [];
+    const selected = $editor.find('tr[data-area-id]').toArray()
+        .map(row => row.dataset.areaId)
+        .filter(id => editorData.selection.includes(id));
+    selected.forEach(id => {
+        const uuid = cloneArea(id, dx, dy);
+        addTableRow(uuid, id);
+        copies.push(uuid);
+    });
+    if (copies.length) {
+        clearSelection(copies);
+        if (editorData.mode == 'edit' && copies.length == 1) {
+            setCurrentEditArea(copies[0]);
+        }
+    }
+}
+
+function constrainedMoveDelta(dx, dy, constrain) {
+    dx = cleanNumber(dx);
+    dy = cleanNumber(dy);
+    if (!constrain || (dx == 0 && dy == 0)) return { x: dx, y: dy };
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const snap = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+    return {
+        x: cleanNumber(Math.cos(snap) * distance),
+        y: cleanNumber(Math.sin(snap) * distance),
+    };
+}
+
 function applyTranslation(data, dx, dy) {
     // Apply translation to all coordinate pairs in area.data
     const pairs = data.split(' ');
@@ -1176,15 +1306,9 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'move' && $target.hasClass('background')) {
         // Add an area to the selection in move mode
         if (type == 'pointerdown') {
-            // Do nothing if any modifiers except CTRL are pressed
-            if (e.altKey || e.shiftKey) return;
+            if (e.altKey) return;
             const id = $target.attr('data-id') ?? '';
             if (id != '' && editorData.areas[id]) {
-                // CTRL key means edit selection
-                if (e.ctrlKey) { 
-                    addToSelection([id], true); 
-                    return;
-                }
                 if (!$target.hasClass('selected')) {
                     // Single select other item
                     clearSelection([id]); 
@@ -1194,6 +1318,8 @@ function handleSVGEvent(e) {
                 setMode('move-moving');
                 moveStartPos.x = pos.x;
                 moveStartPos.y = pos.y;
+                moveDelta.x = 0;
+                moveDelta.y = 0;
                 svg.setPointerCapture(e.pointerId);
             }
             return;
@@ -1203,22 +1329,22 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'move-moving') {
         // Move all selected areas while in move mode
         if (type == 'pointermove') {
-            // No keyboard modifiers must be pressed
-            if (e.altKey || e.shiftKey || e.ctrlKey) return;
+            if (e.altKey) return;
             // Update x and y translation
-            const dx = pos.x - moveStartPos.x;
-            const dy = pos.y - moveStartPos.y;
-            svg.style.setProperty('--move-x', dx + 'px');
-            svg.style.setProperty('--move-y', dy + 'px');
+            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.shiftKey);
+            moveDelta.x = delta.x;
+            moveDelta.y = delta.y;
+            svg.style.setProperty('--move-x', delta.x + 'px');
+            svg.style.setProperty('--move-y', delta.y + 'px');
             return;
         }
 
         // End moving
         if (type == 'pointerup') {
             svg.releasePointerCapture(e.pointerId);
-            // Get translated x and y
-            const dx = parseInt(svg.style.getPropertyValue('--move-x'));
-            const dy = parseInt(svg.style.getPropertyValue('--move-y'));
+            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.shiftKey);
+            const dx = delta.x || moveDelta.x;
+            const dy = delta.y || moveDelta.y;
             // Reset translation
             svg.style.setProperty('--move-x', 0);
             svg.style.setProperty('--move-y', 0);
@@ -1228,8 +1354,15 @@ function handleSVGEvent(e) {
             else {
                 // Inside of edit area - apply dx and dy
                 log('Move dx:', dx, 'dy:', dy);
-                moveSelection(dx, dy);
+                if (e.ctrlKey && (dx != 0 || dy != 0)) {
+                    duplicateSelection(dx, dy);
+                }
+                else if (dx != 0 || dy != 0) {
+                    moveSelection(dx, dy);
+                }
             }
+            moveDelta.x = 0;
+            moveDelta.y = 0;
             setMode('move');
             return;
         }
@@ -1306,7 +1439,7 @@ function shapeTag(type) {
 }
 
 function applyDesignerShapeStyle(el, area, state) {
-    const style = normalizeStyle(area.style ?? {})[state] ?? STYLE_DEFAULTS[state];
+    const style = getAreaStyle(area)[state] ?? STYLE_DEFAULTS[state];
     el.style.fill = style.fill;
     el.style.stroke = style.stroke;
     el.style.fillOpacity = style.fillOpacity;
@@ -1317,7 +1450,7 @@ function applyDesignerShapeStyle(el, area, state) {
 function updateStyleSample(id) {
     const area = editorData.areas[id] ?? null;
     if (!area) return;
-    const style = normalizeStyle(area.style ?? {});
+    const style = getAreaStyle(area);
     const $sample = $('tr[data-area-id="' + id + '"]').find('.area-style-sample');
     $sample.empty();
     ['regular', 'hover', 'selected'].forEach(state => {
@@ -1364,6 +1497,7 @@ function setCurrentEditArea(id) {
 
     // Set edit mode and update shape
     setShapeType(area.type);
+    setSelectedStyleName(area.style ?? DEFAULT_STYLE_NAME);
     // Update table
     $('tr[data-area-id="' + currentAreaId + '"]').find('input[name=active-area]').prop('checked', true);
     // Update SVG
@@ -1571,13 +1705,13 @@ function addNewArea() {
         label: '',
         tooltip: '',
         target: '',
-        style: normalizeStyle({}),
+        style: getSelectedStyleName(),
         data: normalizeShapeData(getShapeType(), null)
     };
     return uuid;
 }
 
-function cloneArea(origId) {
+function cloneArea(origId, dx = 10, dy = 10) {
     const uuid = generateUUID();
     const orig = editorData.areas[origId];
     editorData.areas[uuid] = {
@@ -1586,8 +1720,8 @@ function cloneArea(origId) {
         label: '',
         tooltip: orig.tooltip ?? '',
         target: '',
-        style: normalizeStyle(orig.style ?? {}),
-        data: translateShapeData(orig.type, orig.data, 10, 10)
+        style: normalizeStyleReference(orig.style ?? DEFAULT_STYLE_NAME),
+        data: translateShapeData(orig.type, orig.data, dx, dy)
     };
     return uuid;
 }
@@ -1647,9 +1781,38 @@ function setStyleState(state) {
     updateStyleControls();
 }
 
+function updateStyleSelector() {
+    const $select = $editor.find('[data-action="style-select"]');
+    const selected = getSelectedStyleName();
+    $select.empty();
+    Object.keys(editorData.styles).forEach(name => {
+        $('<option></option>').attr('value', name).text(name).appendTo($select);
+    });
+    if (!editorData.styles[selected]) {
+        $select.val(DEFAULT_STYLE_NAME);
+    }
+    else {
+        $select.val(selected);
+    }
+}
+
+function getSelectedStyleName() {
+    const selected = normalizeStyleName($editor.find('[data-action="style-select"]').val());
+    return selected && editorData.styles[selected] ? selected : DEFAULT_STYLE_NAME;
+}
+
+function setSelectedStyleName(name) {
+    name = normalizeStyleName(name);
+    if (!name || !editorData.styles[name]) name = DEFAULT_STYLE_NAME;
+    $editor.find('[data-action="style-select"]').val(name);
+}
+
 function updateStyleControls() {
+    if (!editorData) return;
     const area = editorData && currentAreaId ? editorData.areas[currentAreaId] : null;
-    const style = normalizeStyle(area ? area.style : {});
+    if (area) setSelectedStyleName(area.style ?? DEFAULT_STYLE_NAME);
+    updateStyleSelector();
+    const style = getStyleByName(getSelectedStyleName());
     const stateStyle = style[currentStyleState];
     ['regular', 'hover', 'selected'].forEach(state => {
         applyStyleToSwatch($editor.find('[data-style-state-preview="' + state + '"]'), style[state]);
@@ -1678,69 +1841,105 @@ function hexToRgba(hex, opacity) {
 }
 
 function applyStyleChange(prop, value) {
-    const targetIds = currentAreaId ? [currentAreaId] : editorData.selection;
-    for (const id of targetIds) {
-        if (!editorData.areas[id]) continue;
-        const style = normalizeStyle(editorData.areas[id].style ?? {});
-        if (prop == 'fill' || prop == 'stroke') {
-            style[currentStyleState][prop] = cleanColor(value, style[currentStyleState][prop]);
-        }
-        else if (prop == 'fillOpacity' || prop == 'strokeOpacity') {
-            style[currentStyleState][prop] = cleanOpacity(value, style[currentStyleState][prop]);
-        }
-        else if (prop == 'strokeWidth') {
-            style[currentStyleState][prop] = Math.max(0, Math.min(20, cleanNumber(value, style[currentStyleState][prop])));
-        }
-        editorData.areas[id].style = style;
-        updateBackgroundShape(id, id == currentAreaId);
+    const name = getSelectedStyleName();
+    const style = getStyleByName(name);
+    if (prop == 'fill' || prop == 'stroke') {
+        style[currentStyleState][prop] = cleanColor(value, style[currentStyleState][prop]);
     }
+    else if (prop == 'fillOpacity' || prop == 'strokeOpacity') {
+        style[currentStyleState][prop] = cleanOpacity(value, style[currentStyleState][prop]);
+    }
+    else if (prop == 'strokeWidth') {
+        style[currentStyleState][prop] = Math.max(0, Math.min(20, cleanNumber(value, style[currentStyleState][prop])));
+    }
+    editorData.styles[name] = style;
+    updateAreasUsingStyle(name);
     updateStyleControls();
 }
 
 function applyStyleToSelected() {
-    if (!currentAreaId || editorData.selection.length == 0) return;
-    const source = normalizeStyle(editorData.areas[currentAreaId].style ?? {})[currentStyleState];
+    const name = getSelectedStyleName();
     for (const id of editorData.selection) {
         if (!editorData.areas[id]) continue;
-        const style = normalizeStyle(editorData.areas[id].style ?? {});
-        style[currentStyleState] = Object.assign({}, source);
-        editorData.areas[id].style = style;
+        editorData.areas[id].style = name;
         updateBackgroundShape(id, id == currentAreaId);
     }
     updateStyleControls();
 }
 
 function copyStyleState() {
-    const area = editorData && currentAreaId ? editorData.areas[currentAreaId] : null;
-    if (!area) return;
-    styleClipboard = Object.assign({}, normalizeStyle(area.style ?? {})[currentStyleState]);
+    styleClipboard = Object.assign({}, getStyleByName(getSelectedStyleName())[currentStyleState]);
 }
 
 function pasteStyleState() {
     if (!styleClipboard) return;
-    const ids = currentAreaId ? [currentAreaId] : editorData.selection;
+    const name = getSelectedStyleName();
+    const style = getStyleByName(name);
+    style[currentStyleState] = Object.assign({}, styleClipboard);
+    editorData.styles[name] = style;
+    updateAreasUsingStyle(name);
+    updateStyleControls();
+}
+
+function syncStyleStates() {
+    const name = getSelectedStyleName();
+    const style = getStyleByName(name);
+    const source = Object.assign({}, style[currentStyleState]);
+    ['regular', 'hover', 'selected'].forEach(state => {
+        style[state] = Object.assign({}, source);
+    });
+    editorData.styles[name] = style;
+    updateAreasUsingStyle(name);
+    updateStyleControls();
+}
+
+function updateAreasUsingStyle(name) {
+    Object.keys(editorData.areas).forEach(id => {
+        if (getStyleNameForArea(editorData.areas[id]) == name) {
+            updateBackgroundShape(id, id == currentAreaId);
+        }
+    });
+}
+
+function assignSelectedStyle(name, ids) {
+    name = normalizeStyleName(name);
+    if (!name || !editorData.styles[name]) return;
     ids.forEach(id => {
         if (!editorData.areas[id]) return;
-        const style = normalizeStyle(editorData.areas[id].style ?? {});
-        style[currentStyleState] = Object.assign({}, styleClipboard);
-        editorData.areas[id].style = style;
+        editorData.areas[id].style = name;
         updateBackgroundShape(id, id == currentAreaId);
     });
     updateStyleControls();
 }
 
-function syncStyleStates() {
+function showNewStyleInput() {
+    const base = uniqueStyleName('style');
+    const $panel = $editor.find('.eim-style-new');
+    $panel.css('display', 'flex');
+    $panel.find('[data-style-new-name]').val(base).trigger('focus').trigger('select');
+}
+
+function hideNewStyleInput() {
+    $editor.find('.eim-style-new').hide();
+}
+
+function addNamedStyle() {
+    const $input = $editor.find('[data-style-new-name]');
+    const name = normalizeStyleName($input.val());
+    if (!name) {
+        showToast('Enter a style name.', true);
+        return;
+    }
+    if (editorData.styles[name]) {
+        showToast('A style with that name already exists.', true);
+        return;
+    }
+    editorData.styles[name] = getStyleByName(getSelectedStyleName());
+    hideNewStyleInput();
+    updateStyleSelector();
+    setSelectedStyleName(name);
     const ids = currentAreaId ? [currentAreaId] : editorData.selection;
-    ids.forEach(id => {
-        if (!editorData.areas[id]) return;
-        const style = normalizeStyle(editorData.areas[id].style ?? {});
-        const source = Object.assign({}, style[currentStyleState]);
-        ['regular', 'hover', 'selected'].forEach(state => {
-            style[state] = Object.assign({}, source);
-        });
-        editorData.areas[id].style = style;
-        updateBackgroundShape(id, id == currentAreaId);
-    });
+    if (ids.length) assignSelectedStyle(name, ids);
     updateStyleControls();
 }
 
@@ -1829,6 +2028,22 @@ function executeEditorAction(action, $row, event) {
         break;
         case 'style-apply-to-selected': {
             applyStyleToSelected();
+        }
+        break;
+        case 'style-select': {
+            assignSelectedStyle(getSelectedStyleName(), currentAreaId ? [currentAreaId] : editorData.selection);
+        }
+        break;
+        case 'style-add-start': {
+            showNewStyleInput();
+        }
+        break;
+        case 'style-add-confirm': {
+            addNamedStyle();
+        }
+        break;
+        case 'style-add-cancel': {
+            hideNewStyleInput();
         }
         break;
         case 'style-copy': {
@@ -1960,6 +2175,7 @@ function executeEditorAction(action, $row, event) {
                 formName: editorData.formName,
                 bounds: editorData.bounds,
                 'two-way': $editor.find('input[name=two-way]').prop('checked'),
+                styles: stylesToMap(),
                 map: areasToMap(),
             }
             JSMO.ajax('save-map', data).then(function() {

@@ -10,6 +10,8 @@ class MapDataHelper
 
     const STYLE_PROPS = ["fill", "stroke", "fillOpacity", "strokeOpacity", "strokeWidth"];
 
+    const DEFAULT_STYLE_NAME = "default";
+
     public static function normalize($params)
     {
         if (!is_array($params) || empty($params)) {
@@ -39,9 +41,12 @@ class MapDataHelper
             }
         }
 
+        $styles = self::normalizeStyles($params["styles"] ?? []);
+        $style_signatures = self::styleSignatures($styles);
+
         $shapes = [];
         foreach ($rawShapes as $shape) {
-            $normalized = self::normalizeShape($shape);
+            $normalized = self::normalizeShape($shape, $styles, $style_signatures);
             if ($normalized !== null) {
                 $shapes[] = $normalized;
             }
@@ -50,6 +55,7 @@ class MapDataHelper
         return [
             "version" => self::SCHEMA_VERSION,
             "bounds" => $bounds,
+            "styles" => $styles,
             "shapes" => $shapes,
         ];
     }
@@ -62,10 +68,16 @@ class MapDataHelper
         ];
     }
 
-    public static function normalizeShape($shape)
+    public static function normalizeShape($shape, &$styles = null, &$style_signatures = null)
     {
         if (!is_array($shape)) {
             return null;
+        }
+        if (!is_array($styles)) {
+            $styles = self::normalizeStyles([]);
+        }
+        if (!is_array($style_signatures)) {
+            $style_signatures = self::styleSignatures($styles);
         }
 
         $mode = $shape["mode"] ?? "2-way";
@@ -74,7 +86,7 @@ class MapDataHelper
             "label" => trim((string)($shape["label"] ?? "")),
             "tooltip" => trim((string)($shape["tooltip"] ?? "")),
             "mode" => in_array($mode, self::MODES, true) ? $mode : "2-way",
-            "style" => self::normalizeStyle($shape["style"] ?? []),
+            "style" => self::normalizeStyleReference($shape["style"] ?? self::DEFAULT_STYLE_NAME, $styles, $style_signatures),
         ];
 
         if (isset($shape["poly"]) || isset($shape["points"])) {
@@ -116,32 +128,46 @@ class MapDataHelper
 
     public static function normalizeStyle($style)
     {
+        $full = self::expandStyle(is_array($style) ? $style : []);
+        $fallbacks = self::styleFallbacks($full["regular"]);
         $normalized = [];
         if (!is_array($style)) return $normalized;
 
         foreach (self::STYLE_STATES as $state) {
-            $stateStyle = $style[$state] ?? [];
-            if (!is_array($stateStyle)) continue;
-            $normalized[$state] = [];
             foreach (self::STYLE_PROPS as $prop) {
-                if (!array_key_exists($prop, $stateStyle)) continue;
-                $value = $stateStyle[$prop];
-                if (in_array($prop, ["fillOpacity", "strokeOpacity"], true)) {
-                    $normalized[$state][$prop] = max(0, min(1, floatval($value)));
+                if ($full[$state][$prop] !== $fallbacks[$state][$prop]) {
+                    $normalized[$state][$prop] = $full[$state][$prop];
                 }
-                elseif ($prop === "strokeWidth") {
-                    $normalized[$state][$prop] = max(0, min(20, floatval($value)));
-                }
-                elseif (is_string($value) && preg_match('/^#[0-9a-fA-F]{6}$/', $value)) {
-                    $normalized[$state][$prop] = strtolower($value);
-                }
-            }
-            if (empty($normalized[$state])) {
-                unset($normalized[$state]);
             }
         }
 
         return $normalized;
+    }
+
+    public static function normalizeStyles($styles)
+    {
+        $normalized = [
+            self::DEFAULT_STYLE_NAME => self::normalizeStyle(is_array($styles) ? ($styles[self::DEFAULT_STYLE_NAME] ?? []) : []),
+        ];
+        if (!is_array($styles)) return $normalized;
+
+        foreach ($styles as $name => $style) {
+            $name = self::normalizeStyleName($name);
+            if ($name === "" || $name === self::DEFAULT_STYLE_NAME || !is_array($style)) continue;
+            $normalized[$name] = self::normalizeStyle($style);
+        }
+
+        return $normalized;
+    }
+
+    public static function normalizeStyleName($name)
+    {
+        $name = trim((string)$name);
+        $name = preg_replace('/\s+/', ' ', $name);
+        if ($name === "" || strlen($name) > 64 || preg_match('/[\x00-\x1f\x7f]/', $name)) {
+            return "";
+        }
+        return $name;
     }
 
     public static function getShapeType($shape)
@@ -157,8 +183,101 @@ class MapDataHelper
         return [
             "version" => self::SCHEMA_VERSION,
             "bounds" => [],
+            "styles" => [
+                self::DEFAULT_STYLE_NAME => [],
+            ],
             "shapes" => [],
         ];
+    }
+
+    private static function normalizeStyleReference($style, &$styles, &$style_signatures)
+    {
+        if (is_string($style)) {
+            $name = self::normalizeStyleName($style);
+            return $name === "" ? self::DEFAULT_STYLE_NAME : $name;
+        }
+
+        if (!is_array($style)) {
+            return self::DEFAULT_STYLE_NAME;
+        }
+
+        $style = self::normalizeStyle($style);
+        $signature = self::styleSignature($style);
+        if (isset($style_signatures[$signature])) {
+            return $style_signatures[$signature];
+        }
+
+        $idx = count($styles) + 1;
+        do {
+            $name = "style_$idx";
+            $idx++;
+        } while (isset($styles[$name]));
+
+        $styles[$name] = $style;
+        $style_signatures[$signature] = $name;
+        return $name;
+    }
+
+    private static function styleSignatures($styles)
+    {
+        $signatures = [];
+        foreach ($styles as $name => $style) {
+            $signatures[self::styleSignature($style)] = $name;
+        }
+        return $signatures;
+    }
+
+    private static function styleSignature($style)
+    {
+        return json_encode(self::expandStyle(self::normalizeStyle($style)));
+    }
+
+    private static function expandStyle($style)
+    {
+        $regular_fallback = self::baseStyleDefaults()["regular"];
+        $regular = self::mergeStyleState($regular_fallback, $style["regular"] ?? []);
+        $defaults = self::styleFallbacks($regular);
+        $expanded = ["regular" => $regular];
+        foreach (["hover", "selected"] as $state) {
+            $expanded[$state] = self::mergeStyleState($defaults[$state], $style[$state] ?? []);
+        }
+        return $expanded;
+    }
+
+    private static function styleFallbacks($regular)
+    {
+        return [
+            "regular" => self::baseStyleDefaults()["regular"],
+            "hover" => ["fill" => $regular["fill"], "stroke" => $regular["stroke"], "fillOpacity" => 0.2, "strokeOpacity" => $regular["strokeOpacity"], "strokeWidth" => $regular["strokeWidth"]],
+            "selected" => ["fill" => $regular["fill"], "stroke" => $regular["stroke"], "fillOpacity" => 0.4, "strokeOpacity" => $regular["strokeOpacity"], "strokeWidth" => $regular["strokeWidth"]],
+        ];
+    }
+
+    private static function baseStyleDefaults()
+    {
+        return [
+            "regular" => ["fill" => "#ffa500", "stroke" => "#ffa500", "fillOpacity" => 0.05, "strokeOpacity" => 1.0, "strokeWidth" => 1.0],
+        ];
+    }
+
+    private static function mergeStyleState($fallback, $style)
+    {
+        if (!is_array($style)) return $fallback;
+        $merged = $fallback;
+        foreach (self::STYLE_PROPS as $prop) {
+            if (!array_key_exists($prop, $style)) continue;
+            $value = $style[$prop];
+            if (in_array($prop, ["fillOpacity", "strokeOpacity"], true)) {
+                $merged[$prop] = max(0, min(1, floatval($value)));
+            }
+            elseif ($prop === "strokeWidth") {
+                $merged[$prop] = max(0, min(20, floatval($value)));
+            }
+            elseif (is_string($value) && preg_match('/^#[0-9a-fA-F]{6}$/', $value)) {
+                $merged[$prop] = strtolower($value);
+            }
+        }
+        return $merged;
     }
 
     private static function normalizePoly($poly)

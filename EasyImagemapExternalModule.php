@@ -147,7 +147,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
                             "label" => empty($map["label"]) ? ($target_enum[$code] ?? "(empty/reset)") : $map["label"],
-                            "style" => $map["style"] ?? [],
+                            "style" => $map["style"] ?? MapDataHelper::DEFAULT_STYLE_NAME,
                         ];
                         $hasShape = false;
                         foreach (['poly', 'rect', 'circle', 'ell'] as $shape) {
@@ -175,6 +175,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 $maps[$map_field_name]["hash"] = $edoc_hash;
                 $maps[$map_field_name]["areas"] = $areas;
                 $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
+                $maps[$map_field_name]["styles"] = $mf_meta["styles"];
                 $targets = array_merge($targets, $map_targets);
             }
         }
@@ -328,6 +329,24 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             </div>
                             <div class="eim-style-panel">
                                 <div class="eim-style-panel-title"><i class="fa-solid fa-palette"></i> Area style</div>
+                                <div class="eim-style-selector">
+                                    <select data-action="style-select" class="form-control form-control-sm" title="Style"></select>
+                                    <button type="button" data-action="style-add-start" class="btn btn-outline-secondary btn-sm" title="Add new style">
+                                        <i class="fa-solid fa-add"></i>
+                                    </button>
+                                    <button type="button" data-action="style-apply-to-selected" class="btn btn-outline-secondary btn-sm" title="Apply this style to selected areas">
+                                        <i class="fa-regular fa-pen-to-square"></i>
+                                    </button>
+                                </div>
+                                <div class="eim-style-new" style="display:none;">
+                                    <input type="text" class="form-control form-control-sm" data-style-new-name placeholder="New style name" maxlength="64">
+                                    <button type="button" data-action="style-add-confirm" class="btn btn-primary btn-sm" title="Create style">
+                                        <i class="fa-solid fa-check"></i>
+                                    </button>
+                                    <button type="button" data-action="style-add-cancel" class="btn btn-outline-secondary btn-sm" title="Cancel">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
                                 <div class="eim-style-states">
                                     <button type="button" data-action="style-regular" class="eim-style-state active" title="Edit normal style">
                                         <span class="eim-state-label">Normal</span>
@@ -358,9 +377,6 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     </button>
                                     <button type="button" data-action="style-sync-states" class="btn btn-outline-secondary" title="Copy active state style to all three states">
                                         <i class="fa-solid fa-link"></i>
-                                    </button>
-                                    <button type="button" data-action="style-apply-to-selected" class="btn btn-outline-secondary" title="Apply active state style to selected areas">
-                                        <i class="fa-regular fa-pen-to-square"></i>
                                     </button>
                                 </div>
                             </div>
@@ -509,6 +525,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "hash" => $qualified_fields[$field_name],
             "map" => $map_config["shapes"],
             "bounds" => $map_config["bounds"],
+            "styles" => $map_config["styles"],
             "assignables" => $assignables,
         ];
     }
@@ -565,6 +582,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "version" => MapDataHelper::SCHEMA_VERSION,
             "shapes" => $map,
             "bounds" => $data["bounds"] ?? [],
+            "styles" => $data["styles"] ?? [],
         ]);
         if (count($store["shapes"]) !== count($map)) {
             throw new Exception("One or more areas have an invalid or incomplete shape. Complete or remove them before saving.");
@@ -593,6 +611,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         }
 
         $form_fields = $this->get_form_fields($form_name);
+        $styles = $store["styles"] ?? [];
+        if (!is_array($styles) || !array_key_exists(MapDataHelper::DEFAULT_STYLE_NAME, $styles)) {
+            throw new Exception("At least the default map style must be defined.");
+        }
         foreach (($store["shapes"] ?? []) as $idx => $shape) {
             $display_idx = $idx + 1;
             $shape_type = MapDataHelper::getShapeType($shape);
@@ -601,6 +623,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             }
             if (!in_array(($shape["mode"] ?? "2-way"), MapDataHelper::MODES, true)) {
                 throw new Exception("Area $display_idx has an invalid update mode.");
+            }
+            $style_name = MapDataHelper::normalizeStyleName($shape["style"] ?? MapDataHelper::DEFAULT_STYLE_NAME);
+            if ($style_name === "" || !array_key_exists($style_name, $styles)) {
+                throw new Exception("Area $display_idx references an unknown style.");
             }
             $target = $shape["target"] ?? "";
             if ($target == "") {

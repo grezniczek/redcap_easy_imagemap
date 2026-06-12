@@ -91,6 +91,22 @@
     font-weight: 600;
     margin-bottom: 6px;
 }
+.eim-editor .eim-style-selector,
+.eim-editor .eim-style-new {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    margin-bottom: 6px;
+}
+.eim-editor .eim-style-selector select,
+.eim-editor .eim-style-new input {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.eim-editor .eim-style-selector .btn,
+.eim-editor .eim-style-new .btn {
+    flex: 0 0 auto;
+}
 .eim-editor .eim-style-states {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));

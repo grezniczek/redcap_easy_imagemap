@@ -65,7 +65,28 @@ assert_true($canonical["shapes"][0]["rect"]["angle"] === 15, "Rectangle angles a
 assert_true(MapDataHelper::getShapeType($canonical["shapes"][1]) === "circle", "Circles are detected.");
 assert_true(MapDataHelper::getShapeType($canonical["shapes"][2]) === "ell", "Ellipses are detected.");
 assert_true($canonical["shapes"][2]["ell"]["angle"] === 30, "Ellipse angles are preserved.");
-assert_true($canonical["shapes"][0]["style"]["selected"]["fill"] === "#ff0000", "Styles are preserved.");
+assert_true($canonical["shapes"][0]["style"] !== "default", "Inline styles are converted to a named style.");
+assert_true($canonical["styles"][$canonical["shapes"][0]["style"]]["selected"]["fill"] === "#ff0000", "Converted styles are preserved.");
+
+$named_styles = MapDataHelper::normalize([
+    "version" => 1,
+    "bounds" => ["width" => 100, "height" => 80],
+    "styles" => [
+        "default" => [],
+        "warning" => [
+            "regular" => ["fill" => "#ff0000"],
+        ],
+    ],
+    "shapes" => [
+        [
+            "circle" => ["cx" => 25, "cy" => 30, "r" => 12],
+            "target" => "field:c",
+            "style" => "warning",
+        ],
+    ],
+]);
+assert_true(array_key_exists("default", $named_styles["styles"]), "Default named style is always present.");
+assert_true($named_styles["shapes"][0]["style"] === "warning", "Named style references are preserved.");
 
 $tags = ActionTagHelper::parseActionTags('@EASYIMAGEMAP={"version":1,"bounds":{"width":1,"height":1},"shapes":[]} @OTHER=1', '@EASYIMAGEMAP');
 assert_true(count($tags) === 1, "Action tag helper filters tags.");

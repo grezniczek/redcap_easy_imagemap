@@ -151,7 +151,7 @@ function addMap(field, map, $img) {
             map.areas.splice(areaIdx, 1);
         }
         else {
-            styles.push(createAreaStyle(id, area.style));
+            styles.push(createAreaStyle(id, resolveAreaStyle(area.style, map.styles)));
             svg.append(shape);
             if (checkTargetValue(targetType, area.target, area.code)) {
                 shape.classList.add('selected');
@@ -253,6 +253,13 @@ function createAreaStyle(id, style) {
     return '#' + id + ' {' + cssFromStyle(regular) + 'cursor:pointer;touch-action:manipulation;}\n' +
         '#' + id + ':hover {' + cssFromStyle(hover) + '}\n' +
         '#' + id + '.selected {' + cssFromStyle(selected) + '}\n';
+}
+
+function resolveAreaStyle(style, styles) {
+    if (typeof style == 'string') {
+        return styles && styles[style] ? styles[style] : {};
+    }
+    return style && typeof style == 'object' ? style : {};
 }
 
 function styleState(style, state, defaults) {
