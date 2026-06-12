@@ -532,7 +532,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             throw new Exception("Field '$field_name' is not marked with $tagname!");
         }
         // Extract action tag parameter.
-        $tag = array_pop(ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG));
+        $tags = ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG);
+        $tag = array_pop($tags);
         $params = trim($tag["params"]);
         if ($params == "") $params = "{}";
         try {
