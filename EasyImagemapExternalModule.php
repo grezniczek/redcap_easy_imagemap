@@ -417,22 +417,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     </button>
                                 </div>
                                 <div class="eim-style-grid">
-                                    <label>Fill <input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500"></label>
-                                    <label>Stroke <input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500"></label>
-                                    <label>Fill opacity <input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"></label>
-                                    <label>Stroke opacity <input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"></label>
-                                    <label>Stroke width <input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"></label>
-                                </div>
-                                <div class="eim-style-actions btn-group btn-group-sm" role="group" aria-label="Style copy and sync">
-                                    <button type="button" data-action="style-copy" class="btn btn-outline-secondary" title="Copy active state style">
-                                        <i class="fa-regular fa-copy"></i>
-                                    </button>
-                                    <button type="button" data-action="style-paste" class="btn btn-outline-secondary" title="Paste copied style to active state">
-                                        <i class="fa-regular fa-paste"></i>
-                                    </button>
-                                    <button type="button" data-action="style-sync-states" class="btn btn-outline-secondary" title="Copy active state style to all three states">
-                                        <i class="fa-solid fa-link"></i>
-                                    </button>
+                                    <label><input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500"> Fill</label>
+                                    <label><input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500"> Stroke</label>
+                                    <label><input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"> Fill opacity</label>
+                                    <label><input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"> Stroke opacity</label>
+                                    <div class="eim-style-actions btn-group btn-group-xs" role="group" aria-label="Style copy and sync">
+                                        <button type="button" data-action="style-copy" class="btn btn-outline-secondary" title="Copy active state style">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                        <button type="button" data-action="style-paste" class="btn btn-outline-secondary" title="Paste copied style to active state">
+                                            <i class="fa-regular fa-paste"></i>
+                                        </button>
+                                        <button type="button" data-action="style-sync-states" class="btn btn-outline-secondary" title="Copy active state style to all three states">
+                                            <i class="fa-solid fa-link"></i>
+                                        </button>
+                                    </div>
+                                    <label><input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"> Stroke width</label>
                                 </div>
                             </div>
                             <div class="area-assignments-table">
@@ -476,13 +476,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                                 </div>
                                             </td>
                                             <td>
-                                                <button data-action="add-area" class="btn btn-default btn-xs" title="Add new row after this one">
+                                                <button data-action="add-area" class="btn btn-default btn-xs eim-action-btn-xs" title="Add new row after this one">
                                                     <i class="fa-solid fa-add"></i>
                                                 </button>
-                                                <button data-action="duplicate-area" class="btn btn-default btn-xs" title="Add a new row based on this one">
+                                                <button data-action="duplicate-area" class="btn btn-default btn-xs eim-action-btn-xs" title="Add a new row based on this one">
                                                     <i class="fa-solid fa-clone"></i>
                                                 </button>
-                                                <button data-action="remove-area" class="btn btn-default btn-xs" title="Remove this row">
+                                                <button data-action="remove-area" class="btn btn-default btn-xs eim-action-btn-xs" title="Remove this row">
                                                     <i class="fa-solid fa-trash-can text-danger"></i>
                                                 </button>
                                             </td>
