@@ -322,18 +322,47 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             </div>
                         </div>
                     </div>
+                    <div class="eim-style-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-style-delete-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-style-delete-title">Delete style?</h5>
+                            <p data-eim-style-delete-message>
+                                This style is assigned to one or more areas. Choose a replacement style before deleting it.
+                            </p>
+                            <label class="eim-style-delete-reassign">
+                                Reassign areas to
+                                <select data-eim-style-delete-reassign class="form-control form-control-sm"></select>
+                            </label>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="style-delete-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+                                <button type="button" data-action="style-delete-confirm" class="btn btn-danger btn-sm">Delete style</button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="modal-body">
                         <div class="area-assignments">
                             <div class="area-assignments-intro">
                                 Add or edit areas, then assign them to a target (field or choice).
                             </div>
-                            <div class="eim-style-panel">
-                                <div class="eim-style-panel-title"><i class="fa-solid fa-palette"></i> Area style</div>
+                            <button type="button" data-action="style-panel-show" class="btn btn-outline-secondary btn-sm eim-style-panel-toggle">
+                                <i class="fa-solid fa-palette"></i> Area style
+                            </button>
+                            <div class="eim-style-panel" style="display:none;">
+                                <div class="eim-style-panel-title">
+                                    <span><i class="fa-solid fa-palette"></i> Area style</span>
+                                    <button type="button" data-action="style-panel-hide" class="btn btn-link btn-sm" title="Hide style panel">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
                                 <div class="eim-style-selector">
                                     <select data-action="style-select" class="form-control form-control-sm" title="Style"></select>
                                     <button type="button" data-action="style-add-start" class="btn btn-outline-secondary btn-sm" title="Add new style">
                                         <i class="fa-solid fa-add"></i>
                                     </button>
+                                    <span class="eim-disabled-tooltip-wrapper" data-style-delete-wrapper title="Delete selected style">
+                                        <button type="button" data-action="style-delete-start" class="btn btn-outline-danger btn-sm">
+                                            <i class="fa-regular fa-trash-alt"></i>
+                                        </button>
+                                    </span>
                                     <button type="button" data-action="style-apply-to-selected" class="btn btn-outline-secondary btn-sm" title="Apply this style to selected areas">
                                         <i class="fa-regular fa-pen-to-square"></i>
                                     </button>

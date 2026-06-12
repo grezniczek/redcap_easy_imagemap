@@ -35,7 +35,8 @@
 .eim-editor .modal-content {
     position: relative;
 }
-.eim-editor .eim-shape-change-dialog {
+.eim-editor .eim-shape-change-dialog,
+.eim-editor .eim-style-delete-dialog {
     position: absolute;
     inset: 0;
     z-index: 20;
@@ -66,6 +67,11 @@
     gap: 8px;
     margin-top: 14px;
 }
+.eim-editor .eim-style-delete-reassign {
+    display: grid;
+    gap: 5px;
+    font-size: 13px;
+}
 .eim-editor .area-assignments {
     height: 100%;
     display: flex;
@@ -87,9 +93,22 @@
     max-width: 460px;
     background: #fff;
 }
+.eim-editor .eim-style-panel-toggle {
+    align-self: flex-start;
+    margin-top: 8px;
+}
 .eim-editor .eim-style-panel-title {
     font-weight: 600;
     margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.eim-editor .eim-style-panel-title .btn {
+    padding: 0;
+    line-height: 1;
+    color: #555;
 }
 .eim-editor .eim-style-selector,
 .eim-editor .eim-style-new {
@@ -105,6 +124,10 @@
 }
 .eim-editor .eim-style-selector .btn,
 .eim-editor .eim-style-new .btn {
+    flex: 0 0 auto;
+}
+.eim-editor .eim-disabled-tooltip-wrapper {
+    display: inline-flex;
     flex: 0 0 auto;
 }
 .eim-editor .eim-style-states {
@@ -234,9 +257,6 @@ svg.eim-svg .edit-shape {
 }
 svg.eim-svg .background {
     stroke-width: 1;
-    stroke: var(--shape-color);
-    fill: var(--shape-color);
-    opacity: var(--shape-opacity);
 }
 svg.eim-svg.preview .background {
     cursor: pointer;
@@ -255,6 +275,23 @@ svg.eim-svg.move .background.selected {
     opacity: .8;
     translate: var(--move-x) var(--move-y);
 }
+svg.eim-svg.move.copy-moving .background.selected {
+    translate: 0 0;
+}
+svg.eim-svg .moving-copy-preview {
+    pointer-events: none;
+    stroke-dasharray: 3px 3px;
+    opacity: .8;
+}
+svg.eim-svg .move-axis-guide {
+    pointer-events: none;
+}
+svg.eim-svg .move-axis-guide line {
+    stroke: #0d6efd;
+    stroke-width: calc(var(--stroke-width) * 1.5);
+    stroke-dasharray: 6px 4px;
+    opacity: .55;
+}
 
 svg.eim-svg.edit .background.editing {
     cursor: crosshair;
@@ -267,15 +304,7 @@ svg.eim-svg.preview {
     outline: 2px var(--bs-primary) solid;
 }
 svg.eim-svg.preview .background {
-    opacity: 0;
     cursor: pointer;
-}
-svg.eim-svg.preview .background.selected {
-    opacity: 0.6;
-    border: 1px dotted red;
-}
-svg.eim-svg.preview .background:not(.selected):hover {
-    opacity: 0.1;
 }
 #eim-editor-tooltip {
     background: cornsilk;

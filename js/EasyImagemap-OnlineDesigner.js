@@ -22,6 +22,7 @@ let editorData = null;
 let currentAreaId = ''
 
 let currentAnchor = null;
+let hoverAreaId = '';
 
 let editShape = null;
 let assignableLabels = {};
@@ -30,9 +31,11 @@ let dndInitialized = false;
 let currentStyleState = 'regular';
 let styleClipboard = null;
 let pendingShapeChangeType = '';
+let pendingStyleDeleteName = '';
 
 const moveStartPos = { x: 0, y: 0 };
 const moveDelta = { x: 0, y: 0 };
+const moveGuideCenter = { x: 0, y: 0 };
 const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
 const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
 const DEFAULT_STYLE_NAME = 'default';
@@ -926,6 +929,7 @@ function setMode(mode) {
         log('Mode updated to: ' + mode);
     }
     else {
+        updateHoveredArea('');
         $svg.removeClass('preview');
         $('button[data-action="preview"]').addClass('btn-outline-primary').removeClass('btn-primary');
     }
@@ -939,12 +943,14 @@ function setMode(mode) {
             setCurrentEditArea(editorData.selection[0]);
         }
     }
-    else if (mode == 'move' && prevMode != 'move-moving') {
-        // Add current area to move selection (if there is one) and clear current area.
-        const prevAreaId = currentAreaId;
-        setCurrentEditArea('');
-        clearEditAnchors();
-        clearSelection([prevAreaId]);
+    else if (mode == 'move') {
+        if (prevMode != 'move-moving') {
+            // Add current area to move selection (if there is one) and clear current area.
+            const prevAreaId = currentAreaId;
+            setCurrentEditArea('');
+            clearEditAnchors();
+            clearSelection([prevAreaId]);
+        }
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-move"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
         $svg.addClass('move').removeClass('edit').removeClass('preview');
@@ -1015,7 +1021,7 @@ function updateSelection() {
         }
         else {
             this.classList.remove('selected');
-            applyDesignerShapeStyle(this, editorData.areas[id], 'regular');
+            applyDesignerShapeStyle(this, editorData.areas[id], id == hoverAreaId ? 'hover' : 'regular');
         }
     });
     // Table
@@ -1023,6 +1029,18 @@ function updateSelection() {
         const checked = editorData.selection.includes(this.dataset.areaId);
         $(this).find('input[name=checked-area]').prop('checked', checked);
         updateStyleSample(this.dataset.areaId);
+    });
+}
+
+function updateHoveredArea(id) {
+    if (hoverAreaId == id) return;
+    const previousId = hoverAreaId;
+    hoverAreaId = id;
+    [previousId, hoverAreaId].forEach(areaId => {
+        if (!areaId || !editorData.areas[areaId]) return;
+        const el = $svg.find('.background[data-id="' + areaId + '"]')[0];
+        if (!el) return;
+        applyDesignerShapeStyle(el, editorData.areas[areaId], editorData.selection.includes(areaId) ? 'selected' : (areaId == hoverAreaId ? 'hover' : 'regular'));
     });
 }
 
@@ -1039,9 +1057,7 @@ function moveSelection(dx, dy) {
 
 function duplicateSelection(dx, dy) {
     const copies = [];
-    const selected = $editor.find('tr[data-area-id]').toArray()
-        .map(row => row.dataset.areaId)
-        .filter(id => editorData.selection.includes(id));
+    const selected = selectedAreaIdsInRowOrder();
     selected.forEach(id => {
         const uuid = cloneArea(id, dx, dy);
         addTableRow(uuid, id);
@@ -1055,6 +1071,12 @@ function duplicateSelection(dx, dy) {
     }
 }
 
+function selectedAreaIdsInRowOrder() {
+    return $editor.find('tr[data-area-id]').toArray()
+        .map(row => row.dataset.areaId)
+        .filter(id => editorData.selection.includes(id));
+}
+
 function constrainedMoveDelta(dx, dy, constrain) {
     dx = cleanNumber(dx);
     dy = cleanNumber(dy);
@@ -1066,6 +1088,111 @@ function constrainedMoveDelta(dx, dy, constrain) {
         x: cleanNumber(Math.cos(snap) * distance),
         y: cleanNumber(Math.sin(snap) * distance),
     };
+}
+
+function beginMovePreview() {
+    clearMovePreview();
+    const center = getSelectionCenter();
+    moveGuideCenter.x = center.x;
+    moveGuideCenter.y = center.y;
+}
+
+function updateMovePreview(dx, dy, isCopy, showAxes) {
+    svg.style.setProperty('--move-x', isCopy ? '0px' : dx + 'px');
+    svg.style.setProperty('--move-y', isCopy ? '0px' : dy + 'px');
+    $svg.toggleClass('copy-moving', isCopy);
+    if (isCopy) {
+        updateMoveCopyPreview(dx, dy);
+    }
+    else {
+        clearMoveCopyPreview();
+    }
+    updateMoveAxisGuide(showAxes);
+}
+
+function clearMovePreview() {
+    svg.style.setProperty('--move-x', 0);
+    svg.style.setProperty('--move-y', 0);
+    $svg.removeClass('copy-moving');
+    clearMoveCopyPreview();
+    clearMoveAxisGuide();
+}
+
+function updateMoveCopyPreview(dx, dy) {
+    clearMoveCopyPreview();
+    selectedAreaIdsInRowOrder().forEach(id => {
+        const area = editorData.areas[id];
+        if (!area) return;
+        const preview = createShapeElement(area.type, translateShapeData(area.type, area.data, dx, dy), {
+            'class': 'shape moving-copy-preview',
+            'data-preview-for': id,
+        });
+        applyDesignerShapeStyle(preview, area, 'selected');
+        svg.prepend(preview);
+    });
+}
+
+function clearMoveCopyPreview() {
+    $svg.find('.moving-copy-preview').remove();
+}
+
+function updateMoveAxisGuide(showAxes) {
+    clearMoveAxisGuide();
+    if (!showAxes) return;
+    const group = createSVG('g', { 'class': 'move-axis-guide' });
+    [0, 45, 90, 135].forEach(angle => {
+        const segment = lineSegmentThroughBounds(moveGuideCenter, angle);
+        if (!segment) return;
+        group.appendChild(createSVG('line', {
+            x1: segment.a.x,
+            y1: segment.a.y,
+            x2: segment.b.x,
+            y2: segment.b.y,
+        }));
+    });
+    svg.appendChild(group);
+}
+
+function clearMoveAxisGuide() {
+    $svg.find('.move-axis-guide').remove();
+}
+
+function getSelectionCenter() {
+    const selected = $svg.find('.background.selected').toArray();
+    if (!selected.length) return { x: moveStartPos.x, y: moveStartPos.y };
+    const bounds = selected.reduce((acc, el) => {
+        const box = el.getBBox();
+        return {
+            minX: Math.min(acc.minX, box.x),
+            minY: Math.min(acc.minY, box.y),
+            maxX: Math.max(acc.maxX, box.x + box.width),
+            maxY: Math.max(acc.maxY, box.y + box.height),
+        };
+    }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+    return {
+        x: cleanNumber((bounds.minX + bounds.maxX) / 2),
+        y: cleanNumber((bounds.minY + bounds.maxY) / 2),
+    };
+}
+
+function lineSegmentThroughBounds(center, angle) {
+    const ux = Math.cos(angle * Math.PI / 180);
+    const uy = Math.sin(angle * Math.PI / 180);
+    const ts = [];
+    if (Math.abs(ux) > 0.0001) {
+        ts.push((0 - center.x) / ux);
+        ts.push((editorData.bounds.width - center.x) / ux);
+    }
+    if (Math.abs(uy) > 0.0001) {
+        ts.push((0 - center.y) / uy);
+        ts.push((editorData.bounds.height - center.y) / uy);
+    }
+    const points = ts
+        .map(t => ({ x: cleanNumber(center.x + ux * t), y: cleanNumber(center.y + uy * t), t: t }))
+        .filter(point => point.x >= -0.01 && point.y >= -0.01 && point.x <= editorData.bounds.width + 0.01 && point.y <= editorData.bounds.height + 0.01)
+        .sort((a, b) => a.t - b.t);
+    if (points.length < 2) return null;
+    return { a: points[0], b: points[points.length - 1] };
 }
 
 function applyTranslation(data, dx, dy) {
@@ -1171,7 +1298,7 @@ function hideTooltip() {
  * @param {PointerEvent} e 
  */
 function handleSVGEvent(e) {
-    if ((editorData.mode == 'edit' || editorData.mode == 'move') && e.type == 'pointermove') {
+    if ((editorData.mode == 'edit' || editorData.mode == 'move' || editorData.mode == 'preview') && e.type == 'pointermove') {
         // Get all elements under the mouse position
         const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
         // Filter elements that are part of the <svg> and have the class "background"
@@ -1181,10 +1308,13 @@ function handleSVGEvent(e) {
             element.classList.contains('background') && // Check for the "background" class
             !element.classList.contains('editing')      // Exclude elements with the "editing" class
         );
-        if (backgroundElements.length == 1) {
+        if (editorData.mode == 'preview') {
+            updateHoveredArea(backgroundElements.length == 1 ? (backgroundElements[0].getAttribute('data-id') ?? '') : '');
+        }
+        if (backgroundElements.length == 1 && editorData.mode != 'preview') {
             showTooltip(backgroundElements[0].getAttribute('data-id'), e.pageX, e.pageY);
         }
-        else {
+        else if (editorData.mode != 'preview') {
             hideTooltip();
         }
     }
@@ -1197,6 +1327,15 @@ function handleSVGEvent(e) {
 
     //#region Mode: edit
     if (editorData.mode == 'edit') {
+
+        // Add an area to the selection without changing the currently edited area.
+        if (type == 'pointerdown' && e.ctrlKey && $target.hasClass('background')) {
+            const id = $target.attr('data-id') ?? '';
+            if (id != '' && editorData.areas[id]) {
+                addToSelection([id]);
+            }
+            return;
+        }
 
         // Select an area (that is not the currently edited area)
         if (type == 'pointerdown' && $target.hasClass('background') && $target.attr('data-id') != currentAreaId) {
@@ -1306,9 +1445,12 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'move' && $target.hasClass('background')) {
         // Add an area to the selection in move mode
         if (type == 'pointerdown') {
-            if (e.altKey) return;
             const id = $target.attr('data-id') ?? '';
             if (id != '' && editorData.areas[id]) {
+                if (e.ctrlKey) {
+                    addToSelection([id]);
+                    return;
+                }
                 if (!$target.hasClass('selected')) {
                     // Single select other item
                     clearSelection([id]); 
@@ -1320,6 +1462,8 @@ function handleSVGEvent(e) {
                 moveStartPos.y = pos.y;
                 moveDelta.x = 0;
                 moveDelta.y = 0;
+                beginMovePreview();
+                updateMovePreview(0, 0, e.altKey, e.shiftKey);
                 svg.setPointerCapture(e.pointerId);
             }
             return;
@@ -1329,13 +1473,11 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'move-moving') {
         // Move all selected areas while in move mode
         if (type == 'pointermove') {
-            if (e.altKey) return;
             // Update x and y translation
             const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.shiftKey);
             moveDelta.x = delta.x;
             moveDelta.y = delta.y;
-            svg.style.setProperty('--move-x', delta.x + 'px');
-            svg.style.setProperty('--move-y', delta.y + 'px');
+            updateMovePreview(delta.x, delta.y, e.altKey, e.shiftKey);
             return;
         }
 
@@ -1346,15 +1488,14 @@ function handleSVGEvent(e) {
             const dx = delta.x || moveDelta.x;
             const dy = delta.y || moveDelta.y;
             // Reset translation
-            svg.style.setProperty('--move-x', 0);
-            svg.style.setProperty('--move-y', 0);
+            clearMovePreview();
             if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
                 // Outside of edit area - do nothing
             }
             else {
                 // Inside of edit area - apply dx and dy
                 log('Move dx:', dx, 'dy:', dy);
-                if (e.ctrlKey && (dx != 0 || dy != 0)) {
+                if (e.altKey && (dx != 0 || dy != 0)) {
                     duplicateSelection(dx, dy);
                 }
                 else if (dx != 0 || dy != 0) {
@@ -1373,11 +1514,13 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'preview') {
         // Toggle an area while in preview mode
         if (type == 'pointerdown' && $target.hasClass('background')) {
-            if ($target.hasClass('selected')) {
-                $target.removeClass('selected');
+            const id = $target.attr('data-id') ?? '';
+            if (!id || !editorData.areas[id]) return;
+            if (editorData.selection.includes(id)) {
+                removeFromSelection([id]);
             }
             else {
-                $target.addClass('selected');
+                addToSelection([id]);
             }
             return;
         }
@@ -1419,7 +1562,7 @@ function updateBackgroundShape(id, editing = false) {
     if ($bg.length == 1 && $bg[0].tagName.toLowerCase() == shapeTag(area.type)) {
         setShapeAttributes($bg[0], area.type, area.data);
         $bg[0].classList[editing ? 'add' : 'remove']('editing');
-        applyDesignerShapeStyle($bg[0], area, editorData.selection.includes(id) ? 'selected' : 'regular');
+        applyDesignerShapeStyle($bg[0], area, editorData.selection.includes(id) ? 'selected' : (id == hoverAreaId ? 'hover' : 'regular'));
     }
     else {
         $bg.remove();
@@ -1794,6 +1937,7 @@ function updateStyleSelector() {
     else {
         $select.val(selected);
     }
+    updateStyleDeleteButtonState();
 }
 
 function getSelectedStyleName() {
@@ -1820,7 +1964,17 @@ function updateStyleControls() {
     for (const prop of ['fill', 'stroke', 'fillOpacity', 'strokeOpacity', 'strokeWidth']) {
         $editor.find('[data-style-prop="' + prop + '"]').val(stateStyle[prop]);
     }
+    updateStyleDeleteButtonState();
     updateModeButtons();
+}
+
+function updateStyleDeleteButtonState() {
+    if (!editorData) return;
+    const canDelete = Object.keys(editorData.styles ?? {}).length > 1;
+    const $button = $editor.find('[data-action="style-delete-start"]');
+    const $wrapper = $editor.find('[data-style-delete-wrapper]');
+    $button.prop('disabled', !canDelete);
+    $wrapper.attr('title', canDelete ? 'Delete selected style' : 'The last remaining style cannot be deleted');
 }
 
 function applyStyleToSwatch($swatch, style) {
@@ -1912,6 +2066,18 @@ function assignSelectedStyle(name, ids) {
     updateStyleControls();
 }
 
+function showStylePanel() {
+    $editor.find('.eim-style-panel-toggle').hide();
+    $editor.find('.eim-style-panel').show();
+    updateStyleControls();
+}
+
+function hideStylePanel() {
+    hideNewStyleInput();
+    $editor.find('.eim-style-panel').hide();
+    $editor.find('.eim-style-panel-toggle').show();
+}
+
 function showNewStyleInput() {
     const base = uniqueStyleName('style');
     const $panel = $editor.find('.eim-style-new');
@@ -1940,6 +2106,68 @@ function addNamedStyle() {
     setSelectedStyleName(name);
     const ids = currentAreaId ? [currentAreaId] : editorData.selection;
     if (ids.length) assignSelectedStyle(name, ids);
+    updateStyleControls();
+}
+
+function startDeleteSelectedStyle() {
+    const name = getSelectedStyleName();
+    const styleNames = Object.keys(editorData.styles);
+    if (styleNames.length <= 1) {
+        return;
+    }
+    const assignedIds = getAreasUsingStyle(name);
+    if (assignedIds.length == 0) {
+        deleteStyle(name, styleNames.find(styleName => styleName != name) ?? DEFAULT_STYLE_NAME);
+        return;
+    }
+    showStyleDeleteDialog(name, assignedIds.length);
+}
+
+function getAreasUsingStyle(name) {
+    return Object.keys(editorData.areas).filter(id => getStyleNameForArea(editorData.areas[id]) == name);
+}
+
+function showStyleDeleteDialog(name, assignedCount) {
+    pendingStyleDeleteName = name;
+    const $dialog = $editor.find('.eim-style-delete-dialog');
+    const $select = $dialog.find('[data-eim-style-delete-reassign]');
+    $select.empty();
+    Object.keys(editorData.styles).forEach(styleName => {
+        if (styleName == name) return;
+        $('<option></option>').attr('value', styleName).text(styleName).appendTo($select);
+    });
+    $dialog.find('[data-eim-style-delete-message]').text(
+        `Style "${name}" is assigned to ${assignedCount} area${assignedCount == 1 ? '' : 's'}. Choose a replacement style before deleting it.`
+    );
+    $dialog.css('display', 'flex');
+}
+
+function hideStyleDeleteDialog() {
+    pendingStyleDeleteName = '';
+    $editor.find('.eim-style-delete-dialog').hide();
+}
+
+function confirmStyleDelete() {
+    const name = pendingStyleDeleteName;
+    const replacement = $editor.find('[data-eim-style-delete-reassign]').val();
+    hideStyleDeleteDialog();
+    deleteStyle(name, replacement);
+}
+
+function deleteStyle(name, replacement) {
+    name = normalizeStyleName(name);
+    replacement = normalizeStyleName(replacement);
+    if (!name || !editorData.styles[name] || Object.keys(editorData.styles).length <= 1) return;
+    if (!replacement || replacement == name || !editorData.styles[replacement]) {
+        replacement = Object.keys(editorData.styles).find(styleName => styleName != name) ?? DEFAULT_STYLE_NAME;
+    }
+    getAreasUsingStyle(name).forEach(id => {
+        editorData.areas[id].style = replacement;
+    });
+    delete editorData.styles[name];
+    setSelectedStyleName(replacement);
+    updateStyleSelector();
+    Object.keys(editorData.areas).forEach(id => updateBackgroundShape(id, id == currentAreaId));
     updateStyleControls();
 }
 
@@ -2020,6 +2248,14 @@ function executeEditorAction(action, $row, event) {
             hideShapeChangeDialog();
         }
         break;
+        case 'style-panel-show': {
+            showStylePanel();
+        }
+        break;
+        case 'style-panel-hide': {
+            hideStylePanel();
+        }
+        break;
         case 'style-regular':
         case 'style-hover':
         case 'style-selected': {
@@ -2044,6 +2280,18 @@ function executeEditorAction(action, $row, event) {
         break;
         case 'style-add-cancel': {
             hideNewStyleInput();
+        }
+        break;
+        case 'style-delete-start': {
+            startDeleteSelectedStyle();
+        }
+        break;
+        case 'style-delete-confirm': {
+            confirmStyleDelete();
+        }
+        break;
+        case 'style-delete-cancel': {
+            hideStyleDeleteDialog();
         }
         break;
         case 'style-copy': {
@@ -2158,6 +2406,9 @@ function executeEditorAction(action, $row, event) {
             editorData = null;
             // @ts-ignore
             $editor.find('select.assignables').selectpicker('destroy');
+            hideShapeChangeDialog();
+            hideStyleDeleteDialog();
+            hideStylePanel();
             $editor.find('.empty-on-close').children().remove();
             $editor.find('.remove-on-close').remove();
             // Prevent focus error
