@@ -266,12 +266,14 @@ function editImageMap() {
 }
 
 function assignableOptionContent(assignable, option, isUsed = false) {
-    const $badge = $('<span></span>').addClass('badge').addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-dark');
+    const $badge = $('<span></span>').addClass('badge fs8').addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-dark');
     $badge.append($(assignable.icon));
     $badge.append(document.createTextNode(' ' + assignable.name));
-    const $content = $('<span></span>');
+    const $label = $('<span></span>').addClass('eim-target-option-label fs10').text(option.label);
+    const $content = $('<span></span>').addClass('eim-target-option');
     $content.append($badge);
-    $content.append(document.createTextNode(' - ' + option.label));
+    $content.append($('<br>'));
+    $content.append($label);
     if (isUsed) {
         $('<span></span>')
             .addClass('badge badge-light eim-target-used-marker')

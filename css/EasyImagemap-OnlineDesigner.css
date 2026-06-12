@@ -402,6 +402,16 @@ table.eim-areas .form-inline {
     min-width: 0;
     max-width: 100%;
 }
+table.eim-areas .bootstrap-select .filter-option-inner-inner {
+    line-height: 10px;
+}
+.eim-editor .eim-target-option {
+    line-height: 1.15;
+}
+.eim-editor .eim-target-option-label {
+    display: inline-block;
+    margin-top: 2px;
+}
 .eim-editor .drag-handle {
     cursor: grab;
     text-align: center;
