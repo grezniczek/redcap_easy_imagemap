@@ -2,7 +2,8 @@
     "name": "Easy Imagemap",
     "namespace": "DE\\RUB\\EasyImagemapExternalModule",
     "description": "A REDCap external module that converts images in descriptive fields into clickable image maps.",
-    "documentation": "README.md",
+    "documentation": "readme",
+    "tt_documentation": true,
     "authors": [
         {
             "name": "Günther Rezniczek",
