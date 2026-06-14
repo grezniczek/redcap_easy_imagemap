@@ -42,6 +42,7 @@ const moveStartPos = { x: 0, y: 0 };
 const moveDelta = { x: 0, y: 0 };
 const moveGuideCenter = { x: 0, y: 0 };
 const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
+const UPDATE_MODES = ['2-way', 'to-target', 'from-target'];
 const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
 const DEFAULT_STYLE_NAME = 'default';
 
@@ -356,7 +357,7 @@ function areasFromMap(map) {
         } else if (typeof item.ell != 'undefined') {
             type = 'ell';
         }
-        const mode = ['2-way', 'to-target', 'from-target'].includes(item.mode) ? item.mode : '2-way';
+        const mode = UPDATE_MODES.includes(item.mode) ? item.mode : '2-way';
         areas[generateUUID()] = {
             type: type,
             mode: mode,
@@ -2125,10 +2126,50 @@ function updateStyleSample(id) {
     const $sample = $('tr[data-area-id="' + id + '"]').find('.area-style-sample');
     $sample.empty();
     ['regular', 'hover', 'selected'].forEach(state => {
-        const $swatch = $('<span></span>');
+        const $swatch = $('<span></span>').addClass('area-style-state-swatch');
         applyStyleToSwatch($swatch, style[state]);
         $sample.append($swatch);
     });
+    updateAreaModeSample(id);
+}
+
+function updateAreaModeSample(id) {
+    const area = editorData.areas[id] ?? null;
+    if (!area) return;
+    const mode = areaModeSampleDisplay(area.mode);
+    const $button = $('tr[data-area-id="' + id + '"]').find('.area-mode-toggle');
+    $button
+        .removeClass('eim-area-mode-two-way eim-area-mode-to-target eim-area-mode-from-target')
+        .addClass(mode.className)
+        .attr('title', mode.title)
+        .attr('aria-label', mode.title);
+    $button.find('i').attr('class', mode.icon).attr('aria-hidden', 'true');
+}
+
+function areaModeSampleDisplay(mode) {
+    const displays = {
+        '2-way': {
+            icon: 'fa-solid fa-exchange-alt',
+            className: 'eim-area-mode-two-way',
+            title: tt('tooltip_mode_two_way', 'Two-way update'),
+        },
+        'to-target': {
+            icon: 'fa-solid fa-right-to-bracket',
+            className: 'eim-area-mode-to-target',
+            title: tt('tooltip_mode_to_target', 'Update target from image only'),
+        },
+        'from-target': {
+            icon: 'fa-solid fa-right-from-bracket fa-rotate-180',
+            className: 'eim-area-mode-from-target',
+            title: tt('tooltip_mode_from_target', 'Update image from target only'),
+        },
+    };
+    return displays[mode] ?? displays['2-way'];
+}
+
+function nextAreaMode(mode) {
+    const idx = UPDATE_MODES.indexOf(mode);
+    return UPDATE_MODES[(idx + 1) % UPDATE_MODES.length];
 }
 
 /**
@@ -3086,9 +3127,11 @@ function deleteStyle(name, replacement) {
 }
 
 function setAreaMode(mode, ids) {
-    if (!['2-way', 'to-target', 'from-target'].includes(mode)) return;
+    if (!UPDATE_MODES.includes(mode)) return;
     for (const id of ids) {
-        if (editorData.areas[id]) editorData.areas[id].mode = mode;
+        if (!editorData.areas[id]) continue;
+        editorData.areas[id].mode = mode;
+        updateAreaModeSample(id);
     }
     updateModeButtons();
 }
@@ -3333,6 +3376,11 @@ function executeEditorAction(action, $row, event) {
         break;
         case 'mode-apply-to-selected': {
             if (currentAreaId) setAreaMode(editorData.areas[currentAreaId].mode, editorData.selection);
+        }
+        break;
+        case 'cycle-area-mode': {
+            const id = $row.attr('data-area-id') ?? '';
+            if (id && editorData.areas[id]) setAreaMode(nextAreaMode(editorData.areas[id].mode), [id]);
         }
         break;
         //#endregion

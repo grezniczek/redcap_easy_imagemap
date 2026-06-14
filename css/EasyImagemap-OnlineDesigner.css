@@ -197,14 +197,43 @@
     display: inline-grid;
     grid-template-columns: repeat(3, 12px);
     gap: 2px;
+    align-items: stretch;
     vertical-align: middle;
     width: auto;
     height: 17px;
     background-color: transparent;
 }
-.eim-editor .area-style-sample span {
+.eim-editor .area-style-sample .area-style-state-swatch {
     border: 1px solid #aaa;
     background: #ddd;
+}
+.eim-editor .area-mode-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid #b9c0c7;
+    border-radius: 3px;
+    background: #f7f9fb;
+    color: #334155;
+    font-size: 10px;
+    line-height: 1;
+}
+.eim-editor .area-mode-toggle:hover,
+.eim-editor .area-mode-toggle:focus {
+    border-color: #7f8ea3;
+    background: #eef3f8;
+}
+.eim-editor .area-mode-toggle.eim-area-mode-two-way {
+    color: #285f8f;
+}
+.eim-editor .area-mode-toggle.eim-area-mode-to-target {
+    color: #2f6f46;
+}
+.eim-editor .area-mode-toggle.eim-area-mode-from-target {
+    color: #8a5a13;
 }
 .eim-editor .field-name {
     font-weight: bold;
@@ -381,6 +410,12 @@ table.eim-areas th.eim-col-select {
 }
 table.eim-areas th.eim-col-style {
     width: 46px;
+}
+table.eim-areas th.eim-col-mode,
+table.eim-areas td.eim-col-mode {
+    width: 28px;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
 }
 table.eim-areas th.eim-col-target {
     padding-left: 14px;

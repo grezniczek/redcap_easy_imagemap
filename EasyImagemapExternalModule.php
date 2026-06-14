@@ -461,6 +461,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                                 <a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i></a>
                                             </th>
                                             <th scope="col" class="text-center eim-col-style" title="<?= $this->tt_esc("tooltip_style_preview_col") ?>"><i class="fa-solid fa-palette"></i></th>
+                                            <th scope="col" class="text-center eim-col-mode" title="<?= $this->tt_esc("tooltip_update_mode_col") ?>"><i class="fa-solid fa-bolt"></i></th>
                                             <th scope="col" class="eim-col-target"><?= $this->tt_esc("table_col_target") ?></th>
                                             <th scope="col" class="eim-col-actions"><?= $this->tt_esc("table_col_action") ?></th>
                                         </tr>
@@ -481,6 +482,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                             </td>
                                             <td class="text-center">
                                                 <div class="area-style-sample"></div>
+                                            </td>
+                                            <td class="text-center eim-col-mode">
+                                                <button type="button" data-action="cycle-area-mode" class="btn btn-default btn-xs area-mode-toggle" title="<?= $this->tt_esc("tooltip_mode_two_way") ?>" aria-label="<?= $this->tt_esc("tooltip_mode_two_way") ?>">
+                                                    <i class="fa-solid fa-exchange-alt" aria-hidden="true"></i>
+                                                </button>
                                             </td>
                                             <td>
                                                 <div class="form-inline">
