@@ -8,6 +8,12 @@ On data entry forms and surveys, the module renders a responsive SVG overlay on 
 
 ![A REDCap data entry form showing an inline anatomy image with several highlighted clickable areas.](screenshots/data-entry-imagemap.png)
 
+Note: The example joint-selection map is using a skeleton illustration adapted from _Servier Medical Art_, licensed under CC BY 4.0. Clickable regions and highlighting are Easy Imagemap SVG overlays and are not part of the source image. The example image and demo fields are for demonstrating field interaction only. They are not intended to define a clinical scoring instrument.
+
+## Why not a classic HTML image map?
+
+Easy Imagemap does not require custom HTML, external image hosting, or manually maintained coordinate lists. The image is a normal REDCap inline image, the map configuration is stored in the descriptive field’s action tag, and the overlay is generated responsively at runtime. This keeps the configuration reviewable, exportable, and compatible with normal REDCap project design workflows.
+
 ## Scope
 
 Easy Imagemap supports descriptive fields with inline images only. External image URLs, File Repository files, and arbitrary HTML image sources are not supported.
@@ -31,7 +37,7 @@ The designer supports four area shapes:
 
 Enable the External Module for the project, then open Online Designer. Users need REDCap Design rights to configure maps.
 
-Create or choose a descriptive field that contains an image displayed inline. In the field annotation / action tag area, add:
+Create or choose a **descriptive field with an image displayed inline**. In the field annotation / action tag area, add:
 
 ```text
 @EASYIMAGEMAP
@@ -151,6 +157,8 @@ The assignment table shows a compact three-state preview for each row so you can
 ## Previewing And Saving
 
 Use **Preview** to test selections inside the designer without leaving Online Designer. Clicking an area in preview mode toggles the row's selected checkbox and applies the selected style. Press `Esc` to leave preview mode.
+
+![Active preview mode allows to preview all the areas in native, hover, and selected states.](screenshots/designer-preview-mode.png)
 
 Click **Save Changes** when the map is ready. If nothing changed, the module does not update project metadata and does not add a project log entry. If another user changed the same Easy Imagemap configuration after you opened the designer, the save dialog asks whether to overwrite the newer version.
 
