@@ -1,5 +1,7 @@
 # Easy Imagemap
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20555865.svg)](https://doi.org/10.5281/zenodo.20555865)
+
 Easy Imagemap is a REDCap External Module for turning an inline image in a descriptive field into a clickable image map. It is useful when a choice field is easier, safer, or faster to complete by touching a region on an image than by scanning a long list of choices. Typical examples are body maps, joint counts, wound diagrams, dental charts, specimen diagrams, or other structured clinical/registry forms where the visual location matters.
 
 The module is intentionally REDCap-native. The source image must be attached to a descriptive field and displayed inline in the data dictionary. The clickable areas are stored in the `@EASYIMAGEMAP` action tag parameter on that same descriptive field, so the configuration remains part of project metadata and can be reviewed, exported, drafted, and migrated like other instrument design changes.
@@ -75,6 +77,8 @@ The toolbar controls:
 - **Mode**: switch between editing one shape and moving one or more selected shapes together.
 - **Shape**: choose polygon, rectangle, circle, or ellipse for the active area.
 - **Update**: choose how the active area is bound to REDCap data.
+
+Edit mode is for precise handle-level changes to the active area. Move mode is for layout work: select one or more areas, then drag any selected shape to move the whole selection together.
 
 The assignment table contains one row per clickable area. A row stores the area's shape, selected style, target field or choice, and update mode. Use the action buttons to add a row, duplicate a row, or remove a row.
 
@@ -203,3 +207,45 @@ The module preserves compatibility with older supported parameter formats when v
 For production projects, deploy module code and project metadata updates together if you plan to save existing maps with the revised designer. REDCap draft mode must be open before saving changes in production projects.
 
 Invalid JSON in the action tag remains a hard error and must be fixed manually. Invalid individual areas are skipped during display when possible, and save-time validation prevents incomplete or invalid designer areas from being silently persisted.
+
+## License And Third-Party Material
+
+The Easy Imagemap module source code is licensed under the MIT License. This license does not relicense third-party material shown or referenced in the documentation, including REDCap user interface elements, REDCap names and trademarks, cited or demo artwork such as the Servier Medical Art-derived example image, or project-specific source images visible in screenshots. Those materials remain subject to their respective licenses, terms, and rights holders.
+
+## How to cite this work
+
+If you use this external module for a project that generates a research output, please cite this software in addition to [citing REDCap](https://projectredcap.org/resources/citations/). You can do so using the APA referencing style as below:
+
+> Rezniczek, G. A. (2026). Easy Imagemap (REDCap External Module) [Computer software]. https://doi.org/10.5281/zenodo.20555865
+
+Or by adding this reference to your BibTeX database:
+
+```bibtex
+@software{Rezniczek_Easy_Imagemap_REDCap_EM_2026,
+author = {Rezniczek, Günther A.},
+doi = {10.5281/zenodo.20555865},
+title = {{Easy Imagemap (REDCap External Module)}},
+url = {https://github.com/grezniczek/redcap_imagemap},
+version = {1.0.0},
+year = {2026}
+}
+```
+
+These instructions are also available in [GitHub](https://github.com/grezniczek/redcap_imagemap) under 'Cite This Repository'.
+
+## Support this work
+
+If you find this software useful, you can [buy me a coffee or a beer](https://www.paypal.com/donate/?hosted_button_id=6VRC2JFRCBGRN). Your support is purely voluntary and helps me continue improving this project. Of course, you are not entitled to any special benefits—except my silent appreciation while enjoying the drink! 🍻☕
+
+You can use the link or the QR code below to make a donation via PayPal.
+
+![PayPal QR Code](images/qr-paypal.png)
+
+_Please note that donations are purely voluntary and not tax-deductible._
+
+
+---
+
+**Disclaimer**
+
+Parts of this documentation and release polish were developed with assistance from OpenAI's ChatGPT/Codex to support clarity, consistency, and ease of use for REDCap project designers. Final content has been reviewed and adapted by the maintainer to reflect the specific functionality and standards of the *Easy Imagemap* external module.

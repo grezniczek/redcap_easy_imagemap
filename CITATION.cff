@@ -1,0 +1,50 @@
+# CITATION.cff
+# See: https://citation-file-format.github.io/
+
+cff-version: 1.2.0
+message: >-
+  If you use Easy Imagemap in a project that generates a research output,
+  please cite this software in addition to citing REDCap.
+
+type: software
+
+title: "Easy Imagemap (REDCap External Module)"
+short-title: "Easy Imagemap"
+
+abstract: >-
+  Easy Imagemap is a REDCap External Module for turning inline images in
+  descriptive fields into clickable, responsive image maps. It provides a
+  visual designer for polygon, rectangle, circle, and ellipse areas, links
+  those areas to checkbox, radio, select, yes/no, or true/false fields, and
+  stores the map configuration in the @EASYIMAGEMAP action tag as REDCap
+  project metadata.
+
+authors:
+  - family-names: "Rezniczek"
+    given-names: "Günther A."
+    orcid: "https://orcid.org/0000-0002-0852-6002"
+    affiliation: "St. Elisabeth Gruppe GmbH, Klinikum der Ruhr-Universität Bochum, Herne, Germany"
+
+keywords:
+  - REDCap
+  - REDCap External Module
+  - image map
+  - clickable image
+  - visual data entry
+  - survey
+  - clinical research
+  - registry
+
+license: "MIT"
+
+repository-code: "https://github.com/grezniczek/redcap_imagemap"
+url: "https://github.com/grezniczek/redcap_imagemap"
+
+version: "1.0.0"
+date-released: "2026-06-16"
+doi: "10.5281/zenodo.20555865"
+
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20555865"
+    description: "Archived software release"
