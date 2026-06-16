@@ -36,14 +36,18 @@ let currentStyleState = 'regular';
 let styleClipboard = null;
 let pendingShapeChangeType = '';
 let pendingStyleDeleteName = '';
+let ctrlKeyDown = false;
 
 const moveStartPos = { x: 0, y: 0 };
 const moveDelta = { x: 0, y: 0 };
 const moveGuideCenter = { x: 0, y: 0 };
+const editDragGuideCenter = { x: 0, y: 0 };
 const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
 const UPDATE_MODES = ['2-way', 'to-target', 'from-target'];
 const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
 const DEFAULT_STYLE_NAME = 'default';
+const RADIAL_GRID_ANGLES = [0, 45, 90, 135];
+const RADIAL_GRID_STEP = 45;
 
 const STYLE_DEFAULTS = {
     regular: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.05, strokeOpacity: 1, strokeWidth: 1 },
@@ -83,6 +87,11 @@ function initialize(config_data, jsmo_obj) {
         $editor.on('keydown', handleKeyEvent);
         $(window).off('beforeunload.easyimagemap').on('beforeunload.easyimagemap', handleBeforeUnload);
         $(window).off('keydown.easyimagemap').on('keydown.easyimagemap', handleWindowKeyEvent);
+        $(window).off('keyup.easyimagemap').on('keyup.easyimagemap', handleWindowKeyEvent);
+        $(window).off('blur.easyimagemap').on('blur.easyimagemap', function() {
+            ctrlKeyDown = false;
+            updateEditRadialGuide(false);
+        });
 
         // Add buttons
         addOnlineDesignerButtons();
@@ -435,6 +444,8 @@ function handleBeforeUnload(event) {
 
 function handleWindowKeyEvent(event) {
     const key = (event.key ?? '').toString().toLowerCase();
+    ctrlKeyDown = event.type == 'keyup' && key == 'control' ? false : !!event.ctrlKey;
+    updateEditRadialGuide(ctrlKeyDown);
     const isReloadShortcut = key == 'f5' || ((event.ctrlKey || event.metaKey) && key == 'r');
     if (!isReloadShortcut || !hasUnsavedEditorChanges()) return;
     event.preventDefault();
@@ -1059,6 +1070,28 @@ function pointFromAngle(center, angle, length) {
     };
 }
 
+function snapAngle(angle, step = RADIAL_GRID_STEP) {
+    return Math.round(angle / step) * step;
+}
+
+function snapPointToRadialGrid(center, point) {
+    const length = distance(center, point);
+    if (length < 0.0001) return point;
+    return pointFromAngle(center, snapAngle(angleBetween(center, point)), length);
+}
+
+function snappedEditHandlePoint(point, snap) {
+    if (!snap || !currentAreaId || !currentAnchor) return point;
+    if (currentAnchor.dataset.role == 'center') {
+        return snapPointToRadialGrid(editDragGuideCenter, point);
+    }
+    const area = editorData.areas[currentAreaId] ?? null;
+    if (!area || area.type == 'poly') return point;
+    const centerAnchor = findAnchorByRole('center');
+    if (!centerAnchor) return point;
+    return snapPointToRadialGrid(anchorPoint(centerAnchor), point);
+}
+
 function syncOrientedHandles(constrain) {
     if (!currentAreaId || !currentAnchor) return;
     const area = editorData.areas[currentAreaId];
@@ -1286,6 +1319,7 @@ function setMode(mode) {
         $('button[data-action="mode-move"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
     }
+    updateEditRadialGuide(ctrlKeyDown);
 }
 
 //#region Selection
@@ -1451,15 +1485,18 @@ function duplicateCurrentEditAreaForKeyboard() {
     return true;
 }
 
-function startDraggingAnchor(anchor, pointerId) {
+function startDraggingAnchor(anchor, pointerId, showGrid = ctrlKeyDown) {
     if (!anchor) return false;
     currentAnchor = anchor;
     const anchorPos = anchorPoint(currentAnchor);
     currentAnchor.dataset.lastX = anchorPos.x;
     currentAnchor.dataset.lastY = anchorPos.y;
+    editDragGuideCenter.x = anchorPos.x;
+    editDragGuideCenter.y = anchorPos.y;
     currentAnchor.classList.add('dragging');
     activateAnchor(currentAnchor);
     setMode('edit-move-anchor');
+    updateEditRadialGuide(showGrid);
     svg.setPointerCapture(pointerId);
     return true;
 }
@@ -1582,9 +1619,36 @@ function clearMoveCopyPreview() {
 function updateMoveAxisGuide(showAxes) {
     clearMoveAxisGuide();
     if (!showAxes) return;
-    const group = createSVG('g', { 'class': 'move-axis-guide' });
-    [0, 45, 90, 135].forEach(angle => {
-        const segment = lineSegmentThroughBounds(moveGuideCenter, angle);
+    svg.appendChild(createRadialGuide(moveGuideCenter, 'move-axis-guide'));
+}
+
+function clearMoveAxisGuide() {
+    $svg.find('.move-axis-guide').remove();
+}
+
+function updateEditRadialGuide(showGrid = ctrlKeyDown) {
+    clearEditRadialGuide();
+    if (!showGrid || !editorData || !svg || !['edit', 'edit-move-anchor'].includes(editorData.mode)) return;
+    const area = editorData.areas[currentAreaId] ?? null;
+    if (!area) return;
+    const centerAnchor = findAnchorByRole('center');
+    if (!centerAnchor) return;
+    const isCenterDrag = editorData.mode == 'edit-move-anchor' && currentAnchor && currentAnchor.dataset.role == 'center';
+    const canShowGuide = area.type != 'poly' || currentAnchor === centerAnchor;
+    if (!canShowGuide) return;
+    svg.appendChild(createRadialGuide(isCenterDrag ? editDragGuideCenter : anchorPoint(centerAnchor), 'edit-radial-guide'));
+    bringEditHandlesToFront();
+}
+
+function clearEditRadialGuide() {
+    if (!$svg || !$svg.length) return;
+    $svg.find('.edit-radial-guide').remove();
+}
+
+function createRadialGuide(center, className) {
+    const group = createSVG('g', { 'class': className });
+    RADIAL_GRID_ANGLES.forEach(angle => {
+        const segment = lineSegmentThroughBounds(center, angle);
         if (!segment) return;
         group.appendChild(createSVG('line', {
             x1: segment.a.x,
@@ -1593,11 +1657,13 @@ function updateMoveAxisGuide(showAxes) {
             y2: segment.b.y,
         }));
     });
-    svg.appendChild(group);
+    return group;
 }
 
-function clearMoveAxisGuide() {
-    $svg.find('.move-axis-guide').remove();
+function bringEditHandlesToFront() {
+    $svg.find('.edit-shape, .anchor, .last-anchor-marker').each(function() {
+        if (this.parentNode) this.parentNode.appendChild(this);
+    });
 }
 
 function getSelectionCenter() {
@@ -1799,6 +1865,7 @@ function clearEditAnchors() {
     $svg.find('.anchor').each(function() { this.remove() });
     $svg.find('.edit-shape').each(function() { this.remove() });
     $svg.find('.last-anchor-marker').remove();
+    clearEditRadialGuide();
     lastVertexAnchor = null;
     activateAnchor(null);
 }
@@ -1861,6 +1928,7 @@ function handleSVGEvent(e) {
     if (e.button != 0 && !(editorData.mode == 'edit-move-anchor' || editorData.mode == 'move-moving')) return;
     const pos = getMousePosition(e);
     if (!pos) return;
+    ctrlKeyDown = !!e.ctrlKey;
     if (e.target == null) return;
     const type = e.type ?? ''
     const $target = $(e.target);
@@ -1898,6 +1966,8 @@ function handleSVGEvent(e) {
                 const anchorPos = anchorPoint(currentAnchor);
                 currentAnchor.dataset.lastX = anchorPos.x;
                 currentAnchor.dataset.lastY = anchorPos.y;
+                editDragGuideCenter.x = anchorPos.x;
+                editDragGuideCenter.y = anchorPos.y;
                 currentAnchor.dataset.dragMoved = '0';
                 currentAnchor.classList.add('dragging');
             }
@@ -1909,7 +1979,7 @@ function handleSVGEvent(e) {
                     setCurrentEditArea('');
                     setCurrentEditArea(seededAreaId);
                     const dragAnchor = findAnchorByRole(initialDrawHandleRole(area.type));
-                    startDraggingAnchor(dragAnchor, e.pointerId);
+                    startDraggingAnchor(dragAnchor, e.pointerId, e.ctrlKey);
                     return;
                 }
                 if (area.type != 'poly') {
@@ -1922,12 +1992,15 @@ function handleSVGEvent(e) {
                 currentAnchor = newAnchor;
                 currentAnchor.dataset.lastX = pos.x;
                 currentAnchor.dataset.lastY = pos.y;
+                editDragGuideCenter.x = pos.x;
+                editDragGuideCenter.y = pos.y;
                 currentAnchor.dataset.dragMoved = '0';
                 updatePolyCenterAnchor();
                 updateEditShape();
             }
             activateAnchor(currentAnchor);
             setMode('edit-move-anchor');
+            updateEditRadialGuide(e.ctrlKey);
             svg.setPointerCapture(e.pointerId);
             return;
         }
@@ -1939,28 +2012,30 @@ function handleSVGEvent(e) {
         // Drag an anchor
         if (type == 'pointermove') {
             currentAnchor.dataset.dragMoved = '1';
+            const handlePos = snappedEditHandlePoint(pos, e.ctrlKey);
             if (currentAnchor.dataset.role == 'center') {
                 const anchorPos = anchorPoint(currentAnchor);
                 const oldX = Number.parseFloat(currentAnchor.dataset.lastX ?? anchorPos.x);
                 const oldY = Number.parseFloat(currentAnchor.dataset.lastY ?? anchorPos.y);
-                const dx = pos.x - oldX;
-                const dy = pos.y - oldY;
+                const dx = handlePos.x - oldX;
+                const dy = handlePos.y - oldY;
                 editorData.anchors.forEach(anchor => {
                     if (anchor !== currentAnchor) {
                         translateAnchor(anchor, dx, dy);
                     }
                 });
-                currentAnchor.dataset.lastX = pos.x;
-                currentAnchor.dataset.lastY = pos.y;
+                currentAnchor.dataset.lastX = handlePos.x;
+                currentAnchor.dataset.lastY = handlePos.y;
             }
             // Update coordinates of anchor
-            setAnchorPoint(currentAnchor, pos);
-            currentAnchor.dataset.lastX = pos.x;
-            currentAnchor.dataset.lastY = pos.y;
+            setAnchorPoint(currentAnchor, handlePos);
+            currentAnchor.dataset.lastX = handlePos.x;
+            currentAnchor.dataset.lastY = handlePos.y;
             syncOrientedHandles(e.shiftKey);
             updatePolyCenterAnchor();
             updateEditShape();
             updateLastAnchorMarker();
+            updateEditRadialGuide(e.ctrlKey);
             return;
         }
 
@@ -1974,10 +2049,11 @@ function handleSVGEvent(e) {
                     removeAnchor(currentAnchor);
                 }
                 else {
-                    setAnchorPoint(currentAnchor, {
+                    const clampedPoint = {
                         x: Math.max(0, Math.min(editorData.bounds.width - 1, finalPos.x)),
                         y: Math.max(0, Math.min(editorData.bounds.height - 1, finalPos.y)),
-                    });
+                    };
+                    setAnchorPoint(currentAnchor, snappedEditHandlePoint(clampedPoint, e.ctrlKey));
                     syncOrientedHandles(e.shiftKey);
                     activateAnchor(currentAnchor);
                 }
@@ -1992,6 +2068,7 @@ function handleSVGEvent(e) {
             $svg.find('.anchor.dragging').removeClass('dragging');
             svg.releasePointerCapture(e.pointerId);
             setMode('edit');
+            updateEditRadialGuide(e.ctrlKey);
             return;
         }
     }
@@ -2003,7 +2080,7 @@ function handleSVGEvent(e) {
         if (type == 'pointerdown') {
             const id = $target.attr('data-id') ?? '';
             if (id != '' && editorData.areas[id]) {
-                if (e.ctrlKey) {
+                if (e.ctrlKey && !$target.hasClass('selected')) {
                     addToSelection([id]);
                     return;
                 }
@@ -2019,7 +2096,7 @@ function handleSVGEvent(e) {
                 moveDelta.x = 0;
                 moveDelta.y = 0;
                 beginMovePreview();
-                updateMovePreview(0, 0, e.altKey, e.shiftKey);
+                updateMovePreview(0, 0, e.altKey, e.ctrlKey);
                 svg.setPointerCapture(e.pointerId);
             }
             return;
@@ -2030,17 +2107,17 @@ function handleSVGEvent(e) {
         // Move all selected areas while in move mode
         if (type == 'pointermove') {
             // Update x and y translation
-            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.shiftKey);
+            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.ctrlKey);
             moveDelta.x = delta.x;
             moveDelta.y = delta.y;
-            updateMovePreview(delta.x, delta.y, e.altKey, e.shiftKey);
+            updateMovePreview(delta.x, delta.y, e.altKey, e.ctrlKey);
             return;
         }
 
         // End moving
         if (type == 'pointerup') {
             svg.releasePointerCapture(e.pointerId);
-            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.shiftKey);
+            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.ctrlKey);
             const dx = delta.x || moveDelta.x;
             const dy = delta.y || moveDelta.y;
             // Reset translation
@@ -2265,6 +2342,7 @@ function setCurrentEditArea(id, scrollCanvas = false) {
         activateAnchor(null, false);
         updateEditShape();
         updateStyleControls();
+        updateEditRadialGuide(ctrlKeyDown);
         if (scrollCanvas) scrollCurrentAreaCenterIntoView();
     }
     catch (ex) {
@@ -2451,6 +2529,7 @@ function applyShapeTypeChange(type) {
     }
     activateAnchor(null, false);
     updateEditShape();
+    updateEditRadialGuide(ctrlKeyDown);
 }
 
 function skipShapeChangeConfirm() {

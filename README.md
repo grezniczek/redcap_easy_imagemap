@@ -72,7 +72,7 @@ The toolbar controls:
 
 - **Preview**: temporarily test area selection inside the designer.
 - **Zoom**: view the image at 100%, 200%, 300%, or 400%.
-- **Mode**: switch between editing individual shapes and moving selected shapes.
+- **Mode**: switch between editing one shape and moving one or more selected shapes together.
 - **Shape**: choose polygon, rectangle, circle, or ellipse for the active area.
 - **Update**: choose how the active area is bound to REDCap data.
 
@@ -84,13 +84,13 @@ The assignment table contains one row per clickable area. A row stores the area'
 
 Start by adding an area row in the assignment table. Select the row for editing, choose a shape type, then define the shape on the image.
 
-For polygons, click on the image to add vertices. Drag a vertex handle to reposition it. Drag the square center handle to move the whole polygon. The active polygon vertex is marked with an arrowhead; new vertices are inserted relative to that active vertex. Use `Tab` to move through handles, and `Backspace` to remove the active polygon vertex.
+For polygons, click on the image to add vertices. Drag a vertex handle to reposition it. Drag the square center handle to move the whole polygon. The active polygon vertex is marked with a short direction tick; new vertices are inserted relative to that active vertex. Use `Tab` to move through handles, and `Backspace` to remove the active polygon vertex.
 
-For circles, click and drag from the center to set the radius. Later, drag the square center handle to move the circle or drag the perimeter handle to resize it.
+For circles, click and drag from the center to set the radius. Later, drag the square center handle to move the circle or drag the perimeter handle to resize it. Hold `Ctrl` while dragging the perimeter handle to show radial guide lines and snap the handle to 45-degree directions from the center.
 
-For rectangles, click and drag to place the shape. Drag the square center handle to move it, the side handles to resize or rotate along each axis, or the corner handle to resize and rotate while preserving the aspect ratio. Hold `Shift` while dragging an axis handle to constrain width and height together.
+For rectangles, click and drag to place the shape. Drag the square center handle to move it, the side handles to resize or rotate along each axis, or the corner handle to resize and rotate while preserving the aspect ratio. Hold `Ctrl` while dragging a non-center handle to show radial guide lines and snap the dragged handle to 45-degree directions from the center. Hold `Shift` while dragging an axis handle to constrain width and height together.
 
-For ellipses, click and drag to place the shape. Drag the square center handle to move it, the x/y radius handles to resize or rotate the axes, or the corner handle to resize and rotate while preserving the aspect ratio. Hold `Shift` while dragging an axis handle to keep the radii in sync.
+For ellipses, click and drag to place the shape. Drag the square center handle to move it, the x/y radius handles to resize or rotate the axes, or the corner handle to resize and rotate while preserving the aspect ratio. Hold `Ctrl` while dragging a non-center handle to show radial guide lines and snap the dragged handle to 45-degree directions from the center. Hold `Shift` while dragging an axis handle to keep the radii in sync.
 
 ![Shape editing examples showing polygon vertices, square center handles, circle radius handles, rectangle handles, and ellipse handles.](screenshots/designer-shape-handles.png)
 
@@ -98,12 +98,13 @@ Changing the shape type of an existing area converts the geometry instead of del
 
 Useful editing shortcuts:
 
-- `Ctrl`-click an area in edit or move mode to add it to the current selection.
+- `Ctrl`-click an area in edit mode to add it to the current selection. In move mode, `Ctrl`-click an unselected area to add it to the selection.
 - Drag the square center handle in edit mode to move the active shape.
+- Hold `Ctrl` while dragging a center handle in edit mode to show radial guide lines and constrain movement to 45-degree directions from the drag start.
 - Hold `Alt` while dragging the square center handle in edit mode to duplicate the active shape and drag the copy.
-- In move mode, drag a selected shape to move all selected shapes.
+- In move mode, drag a selected shape to move all selected shapes simultaneously.
 - Hold `Alt` while dragging in move mode to create moved copies of the selected shapes.
-- Hold `Shift` while moving shapes to show movement axes and constrain movement to 45-degree steps.
+- Hold `Ctrl` while moving shapes in move mode to show movement axes and constrain movement to 45-degree steps.
 - Use arrow keys to move the active handle in edit mode or all selected shapes in move mode.
 - Hold `Shift` with arrow keys to move by 10 pixels instead of 1 pixel.
 - Press `Delete` in edit mode to clear the active area's shape.

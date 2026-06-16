@@ -335,7 +335,11 @@ svg.eim-svg .moving-copy-preview {
 svg.eim-svg .move-axis-guide {
     pointer-events: none;
 }
-svg.eim-svg .move-axis-guide line {
+svg.eim-svg .edit-radial-guide {
+    pointer-events: none;
+}
+svg.eim-svg .move-axis-guide line,
+svg.eim-svg .edit-radial-guide line {
     stroke: #0d6efd;
     stroke-width: calc(var(--stroke-width) * 1.5);
     stroke-dasharray: 6px 4px;
