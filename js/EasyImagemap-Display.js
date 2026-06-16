@@ -1,6 +1,5 @@
 // Easy Imagemap EM
-// Dr. Günther Rezniczek, Ruhr-Universität Bochum, Marien Hospital Herne
-// @ts-check
+// Dr. Günther Rezniczek, Klinikum der Ruhr-Universität Bochum, Marien Hospital Herne
 ;(function() {
 
 //#region Init global object and define local variables

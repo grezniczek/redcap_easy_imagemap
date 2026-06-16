@@ -1,11 +1,10 @@
 // Easy Imagemap EM
+// Dr. Günther Rezniczek, Klinikum der Ruhr-Universität Bochum, Marien Hospital Herne
 ;(function() {
 
-// @ts-ignore
 const EIM = window.DE_RUB_EasyImagemap ?? {
     init: initialize
 };
-// @ts-ignore
 window.DE_RUB_EasyImagemap = EIM;
 
 let config = {};
@@ -613,12 +612,15 @@ function shapeToPolygon(fromType, data) {
     data = normalizeShapeData(fromType, data);
     if (fromType == 'poly') return data;
     if (fromType == 'rect') {
+        if (!data.width || !data.height) return '';
         return pointsToPoly(orientedRectPoints(getShapeCenter(data), data.width / 2, data.height / 2, data.angle));
     }
     if (fromType == 'circle') {
+        if (!data.r) return '';
         return pointsToPoly(ellipsePoints({ x: data.cx, y: data.cy }, data.r, data.r, 0, 6));
     }
     if (fromType == 'ell') {
+        if (!data.rx || !data.ry) return '';
         return pointsToPoly(ellipsePoints({ x: data.cx, y: data.cy }, data.rx, data.ry, data.angle, 6));
     }
     return '';
@@ -646,8 +648,15 @@ function polyToPoints(poly) {
     if (!poly) return [];
     return poly.split(/\s+/).map(pair => {
         const parts = pair.split(',');
-        return { x: cleanNumber(parts[0]), y: cleanNumber(parts[1]) };
-    }).filter(point => !Number.isNaN(point.x) && !Number.isNaN(point.y));
+        const x = Number.parseFloat(parts[0]);
+        const y = Number.parseFloat(parts[1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return { x: cleanNumber(x), y: cleanNumber(y) };
+    }).filter(isFinitePoint);
+}
+
+function isFinitePoint(point) {
+    return !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
 }
 
 function pointsOuterBox(points) {
@@ -883,30 +892,35 @@ function clamp(value, min, max) {
 }
 
 function getMousePosition(e) {
+    const rect = svg.getBoundingClientRect();
+    if (rect.width && rect.height) {
+        const scaleX = editorData.bounds.width / rect.width;
+        const scaleY = editorData.bounds.height / rect.height;
+        return {
+            x: Math.round((e.clientX - rect.left) * scaleX),
+            y: Math.round((e.clientY - rect.top) * scaleY),
+        };
+    }
     const CTM = svg.getScreenCTM();
     if (CTM && typeof CTM.inverse == 'function' && typeof svg.createSVGPoint == 'function') {
         const point = svg.createSVGPoint();
         point.x = e.clientX;
         point.y = e.clientY;
         const transformed = point.matrixTransform(CTM.inverse());
-        return {
+        const pos = {
             x: Math.round(transformed.x),
             y: Math.round(transformed.y),
         };
+        return isFinitePoint(pos) ? pos : null;
     }
     if (!CTM) {
-        const rect = svg.getBoundingClientRect();
-        const scaleX = rect.width ? editorData.bounds.width / rect.width : 1;
-        const scaleY = rect.height ? editorData.bounds.height / rect.height : 1;
-        return {
-            x: Math.round((e.clientX - rect.left) * scaleX),
-            y: Math.round((e.clientY - rect.top) * scaleY),
-        };
+        return null;
     }
-    return {
+    const pos = {
         x: Math.round((e.clientX - CTM.e) / CTM.a),
         y: Math.round((e.clientY - CTM.f) / CTM.d)
     };
+    return isFinitePoint(pos) ? pos : null;
 }
 
 function createEditShape(area) {
@@ -940,8 +954,9 @@ function dataFromAnchors(type) {
     if (type == 'poly') {
         const points = editorData.anchors
             .filter(anchor => anchor.dataset.role != 'center')
-            .map(anchor => `${anchor.getAttribute('cx')},${anchor.getAttribute('cy')}`);
-        return points.length >= 3 ? points.join(' ') : points.join(' ');
+            .map(anchorPoint)
+            .filter(isFinitePoint);
+        return pointsToPoly(points);
     }
     if (type == 'rect' && editorData.anchors.length >= 2) {
         const centerAnchor = findAnchorByRole('center');
@@ -1146,12 +1161,29 @@ function removeAnchor(anchor) {
 function updatePolyCenterAnchor() {
     if (!currentAreaId || editorData.areas[currentAreaId]?.type != 'poly') return;
     const centerAnchor = findAnchorByRole('center');
-    if (!centerAnchor || currentAnchor === centerAnchor) return;
     const points = editorData.anchors
         .filter(anchor => anchor.dataset.role != 'center')
-        .map(anchorPoint);
-    if (!points.length) return;
-    setAnchorPoint(centerAnchor, polygonCenterOfMass(points));
+        .map(anchorPoint)
+        .filter(isFinitePoint);
+    if (points.length < 2) {
+        if (centerAnchor) {
+            const idx = editorData.anchors.indexOf(centerAnchor);
+            if (idx > -1) editorData.anchors.splice(idx, 1);
+            if (currentAnchor === centerAnchor) currentAnchor = null;
+            centerAnchor.remove();
+        }
+        return;
+    }
+    const center = polygonCenterOfMass(points);
+    if (!centerAnchor) {
+        const anchor = createAnchor(Object.assign(center, { role: 'center' }));
+        svg.appendChild(anchor);
+        editorData.anchors.push(anchor);
+        bringCenterAnchorToFront();
+        return;
+    }
+    setAnchorPoint(centerAnchor, center);
+    bringCenterAnchorToFront();
 }
 
 function createAnchor(point, extraClass = '') {
@@ -1186,17 +1218,13 @@ function updateLastAnchorMarker() {
     const p = anchorPoint(currentAnchor);
     const next = getNextPolygonVertex(currentAnchor);
     const direction = next ? unitVector({ x: anchorPoint(next).x - p.x, y: anchorPoint(next).y - p.y }) : { x: 0, y: -1 };
-    const perpendicular = { x: -direction.y, y: direction.x };
-    const side = 11 / editorData.zoom;
-    const height = side * 0.9;
-    const tip = addVectors(p, scaleVector(direction, height * 0.75));
-    const base = addVectors(p, scaleVector(direction, -height * 0.45));
-    const marker = createSVG('polyline', {
-        points: [
-            `${cleanNumber(base.x + perpendicular.x * side / 2)},${cleanNumber(base.y + perpendicular.y * side / 2)}`,
-            `${cleanNumber(tip.x)},${cleanNumber(tip.y)}`,
-            `${cleanNumber(base.x - perpendicular.x * side / 2)},${cleanNumber(base.y - perpendicular.y * side / 2)}`,
-        ].join(' '),
+    const length = 9 / editorData.zoom;
+    const end = addVectors(p, scaleVector(direction, length));
+    const marker = createSVG('line', {
+        x1: cleanNumber(p.x),
+        y1: cleanNumber(p.y),
+        x2: cleanNumber(end.x),
+        y2: cleanNumber(end.y),
         'class': 'last-anchor-marker',
     });
     svg.appendChild(marker);
@@ -1832,6 +1860,7 @@ function handleSVGEvent(e) {
     // Only handle left mouse button
     if (e.button != 0 && !(editorData.mode == 'edit-move-anchor' || editorData.mode == 'move-moving')) return;
     const pos = getMousePosition(e);
+    if (!pos) return;
     if (e.target == null) return;
     const type = e.type ?? ''
     const $target = $(e.target);
@@ -2313,11 +2342,8 @@ function anchorsFromShape(type, data) {
     data = normalizeShapeData(type, data);
     if (type == 'poly') {
         if (!data) return [];
-        const points = data.split(/\s+/).map(coords => {
-            const pos = coords.split(',');
-            return { x: cleanNumber(pos[0]), y: cleanNumber(pos[1]) };
-        });
-        if (points.length) {
+        const points = polyToPoints(data);
+        if (points.length >= 2) {
             points.push(Object.assign(polygonCenterOfMass(points), { role: 'center' }));
         }
         return points;
@@ -2406,7 +2432,7 @@ function applyShapeTypeChange(type) {
     storeShapeData(currentAreaId);
     const area = editorData.areas[currentAreaId];
     const fromType = area.type;
-    area.data = morphShapeData(fromType, area.data, type);
+    area.data = areaHasData(area) ? morphShapeData(fromType, area.data, type) : normalizeShapeData(type, null);
     area.type = type;
     setShapeTypeButtonState(type);
     $svg.find('[data-id="' + currentAreaId + '"]').remove();

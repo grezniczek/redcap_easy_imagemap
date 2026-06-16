@@ -293,7 +293,7 @@ svg.eim-svg .anchor.dragging {
 svg.eim-svg .last-anchor-marker {
     fill: none;
     stroke: var(--anchor-stroke-color);
-    stroke-width: calc(var(--stroke-width) * 3);
+    stroke-width: calc(var(--stroke-width) * 2);
     stroke-linecap: round;
     stroke-linejoin: round;
     pointer-events: none;
