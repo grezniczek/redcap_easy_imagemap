@@ -37,17 +37,24 @@ let styleClipboard = null;
 let pendingShapeChangeType = '';
 let pendingStyleDeleteName = '';
 let ctrlKeyDown = false;
+let spaceKeyDown = false;
+let panningCanvas = false;
+let panPointerId = null;
 
 const moveStartPos = { x: 0, y: 0 };
 const moveDelta = { x: 0, y: 0 };
 const moveGuideCenter = { x: 0, y: 0 };
 const editDragGuideCenter = { x: 0, y: 0 };
+const panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
 const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
 const UPDATE_MODES = ['2-way', 'to-target', 'from-target'];
 const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
 const DEFAULT_STYLE_NAME = 'default';
 const RADIAL_GRID_ANGLES = [0, 45, 90, 135];
 const RADIAL_GRID_STEP = 45;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.05;
 
 const STYLE_DEFAULTS = {
     regular: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.05, strokeOpacity: 1, strokeWidth: 1 },
@@ -80,6 +87,7 @@ function initialize(config_data, jsmo_obj) {
         $editor = $('.modal.eim-editor');
         $editor.on('click', handleEditorActionEvent);
         $editor.on('input change', '[data-action="style-change"]', handleEditorActionEvent);
+        $editor.on('input change', '[data-action="zoom-slider"]', handleEditorActionEvent);
         $editor.on('change', '[data-action="style-select"]', handleEditorActionEvent);
         $editor.on('changed.bs.select change', 'select.assignables', function(e) {
             executeEditorAction('assign-target', $(e.target).parents('tr[data-area-id]'), e);
@@ -90,6 +98,7 @@ function initialize(config_data, jsmo_obj) {
         $(window).off('keyup.easyimagemap').on('keyup.easyimagemap', handleWindowKeyEvent);
         $(window).off('blur.easyimagemap').on('blur.easyimagemap', function() {
             ctrlKeyDown = false;
+            setSpacePanKey(false);
             updateEditRadialGuide(false);
         });
 
@@ -252,6 +261,9 @@ function editImageMap() {
     svg.addEventListener('pointerup', handleSVGEvent);
     svg.addEventListener('pointerdown', handleSVGEvent);
     svg.addEventListener('pointermove', handleSVGEvent);
+    svg.addEventListener('pointercancel', handleSVGEvent);
+    $container.off('wheel.easyimagemap').on('wheel.easyimagemap', handleCanvasWheel);
+    updateZoomControls();
     setMode('edit');
     setShapeType('poly');
     setStyleState('regular');
@@ -308,24 +320,26 @@ function assignableOptionContent(assignable, option, isUsed = false) {
 
 //#region Zoom
 
-function applyZoom(setToZoom) {
-    ['zoom1x','zoom2x','zoom3x','zoom4x'].forEach((zoom) => {
-        const btn = document.querySelector('button[data-action="' + zoom + '"]');
-        if (btn) {
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-outline-secondary');
-            if (zoom == setToZoom) {
-                btn.classList.remove('btn-outline-secondary');
-                btn.classList.add('btn-secondary');
-                zoomTo(Number.parseInt(zoom.substring(4,5)));
-            }
-            // @ts-ignore
-            btn.blur();
-        }
-    });
+function setZoom(f, options = {}) {
+    f = normalizeZoom(f);
+    if (!editorData || !f) return;
+    if (Math.abs(f - editorData.zoom) < 0.0001) {
+        updateZoomControls();
+        return;
+    }
+    const preserve = options.clientX != null && options.clientY != null ? zoomPreservePoint(options.clientX, options.clientY) : null;
+    zoomTo(f, { scrollCanvas: options.scrollCanvas === true && !preserve });
+    updateZoomControls();
+    if (preserve) restoreZoomPreservePoint(preserve);
 }
 
-function zoomTo(f) {
+function normalizeZoom(value) {
+    const zoom = Number.parseFloat(value);
+    if (!Number.isFinite(zoom)) return 1;
+    return clamp(Math.round(zoom / ZOOM_STEP) * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX);
+}
+
+function zoomTo(f, options = {}) {
     log('Setting zoom level to: ' + f);
     editorData.zoom = f;
     const zW = editorData.bounds.width * f;
@@ -339,8 +353,68 @@ function zoomTo(f) {
     const current = currentAreaId;
     setCurrentEditArea('');
     if (current) {
-        setCurrentEditArea(current, true);
+        setCurrentEditArea(current, options.scrollCanvas === true);
     }
+}
+
+function updateZoomControls() {
+    const zoom = normalizeZoom(editorData ? editorData.zoom : 1);
+    const percent = Math.round(zoom * 100);
+    $editor.find('[data-action="zoom-slider"]').val(percent);
+    $editor.find('[data-zoom-readout]').text(percent + '%');
+    $editor.find('[data-action="zoom-decrease"]').prop('disabled', zoom <= ZOOM_MIN + 0.0001);
+    $editor.find('[data-action="zoom-reset"]').prop('disabled', Math.abs(zoom - 1) < 0.0001);
+    $editor.find('[data-action="zoom-increase"]').prop('disabled', zoom >= ZOOM_MAX - 0.0001);
+}
+
+function handleCanvasWheel(event) {
+    if (!editorData) return;
+    event.preventDefault();
+    const originalEvent = event.originalEvent ?? event;
+    const direction = originalEvent.deltaY < 0 ? 1 : -1;
+    if (direction == 0) return;
+    setZoom(editorData.zoom + direction * ZOOM_STEP, {
+        clientX: originalEvent.clientX,
+        clientY: originalEvent.clientY,
+    });
+}
+
+function zoomButtonStep(direction) {
+    const zoom = normalizeZoom(editorData ? editorData.zoom : 1);
+    if (direction < 0) return zoom < 1.1 ? 0.25 : 0.5;
+    return zoom < 1 ? 0.25 : 0.5;
+}
+
+function zoomPreservePoint(clientX, clientY) {
+    const container = $editor.find('#eim-container')[0];
+    if (!container || !svg) return null;
+    const rect = container.getBoundingClientRect();
+    const offset = svgCanvasOffset();
+    return {
+        container: container,
+        pointerX: clientX - rect.left,
+        pointerY: clientY - rect.top,
+        imageX: container.scrollLeft + clientX - rect.left - offset.left,
+        imageY: container.scrollTop + clientY - rect.top - offset.top,
+        oldZoom: editorData.zoom,
+        offset: offset,
+    };
+}
+
+function restoreZoomPreservePoint(preserve) {
+    if (!preserve || !preserve.container || !preserve.oldZoom) return;
+    const ratio = editorData.zoom / preserve.oldZoom;
+    const maxLeft = Math.max(0, preserve.container.scrollWidth - preserve.container.clientWidth);
+    const maxTop = Math.max(0, preserve.container.scrollHeight - preserve.container.clientHeight);
+    preserve.container.scrollLeft = clamp(preserve.imageX * ratio + preserve.offset.left - preserve.pointerX, 0, maxLeft);
+    preserve.container.scrollTop = clamp(preserve.imageY * ratio + preserve.offset.top - preserve.pointerY, 0, maxTop);
+}
+
+function svgCanvasOffset() {
+    return {
+        left: Number.parseFloat($svg.css('left')) || 0,
+        top: Number.parseFloat($svg.css('top')) || 0,
+    };
 }
 
 //#endregion
@@ -446,6 +520,16 @@ function handleWindowKeyEvent(event) {
     const key = (event.key ?? '').toString().toLowerCase();
     ctrlKeyDown = event.type == 'keyup' && key == 'control' ? false : !!event.ctrlKey;
     updateEditRadialGuide(ctrlKeyDown);
+    const isSpaceKey = key == ' ' || key == 'spacebar' || key == 'space';
+    if (isSpaceKey) {
+        const ignore = shouldIgnoreKeyboardEvent(event);
+        setSpacePanKey(event.type != 'keyup' && !ignore);
+        if (editorData && !ignore) {
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+        }
+    }
     const isReloadShortcut = key == 'f5' || ((event.ctrlKey || event.metaKey) && key == 'r');
     if (!isReloadShortcut || !hasUnsavedEditorChanges()) return;
     event.preventDefault();
@@ -1666,6 +1750,77 @@ function bringEditHandlesToFront() {
     });
 }
 
+function setSpacePanKey(active) {
+    spaceKeyDown = !!active && !!editorData;
+    if (!spaceKeyDown) endCanvasPan();
+    updateCanvasPanClasses();
+}
+
+function updateCanvasPanClasses() {
+    const $container = $editor.find('#eim-container');
+    $container.toggleClass('eim-pan-ready', spaceKeyDown && !panningCanvas);
+    $container.toggleClass('eim-panning', panningCanvas);
+}
+
+function handleCanvasPanPointerEvent(e) {
+    if (panningCanvas) {
+        if (e.type == 'pointermove') {
+            updateCanvasPan(e);
+            return true;
+        }
+        if (e.type == 'pointerup' || e.type == 'pointercancel') {
+            endCanvasPan(e.pointerId);
+            e.preventDefault();
+            return true;
+        }
+        return true;
+    }
+    if (e.type == 'pointerdown' && spaceKeyDown && e.button == 0) {
+        beginCanvasPan(e);
+        return true;
+    }
+    return false;
+}
+
+function beginCanvasPan(e) {
+    const container = $editor.find('#eim-container')[0];
+    if (!container) return;
+    panningCanvas = true;
+    panPointerId = e.pointerId;
+    panStart.x = e.clientX;
+    panStart.y = e.clientY;
+    panStart.scrollLeft = container.scrollLeft;
+    panStart.scrollTop = container.scrollTop;
+    hideTooltip();
+    updateCanvasPanClasses();
+    svg.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function updateCanvasPan(e) {
+    const container = $editor.find('#eim-container')[0];
+    if (!container) return;
+    container.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+    container.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function endCanvasPan(pointerId = null) {
+    if (!panningCanvas) return;
+    panningCanvas = false;
+    const releasePointerId = pointerId ?? panPointerId;
+    panPointerId = null;
+    if (releasePointerId != null && svg && typeof svg.releasePointerCapture == 'function') {
+        try {
+            svg.releasePointerCapture(releasePointerId);
+        }
+        catch (_) { }
+    }
+    updateCanvasPanClasses();
+}
+
 function getSelectionCenter() {
     const selected = $svg.find('.background.selected').toArray();
     if (!selected.length) return { x: moveStartPos.x, y: moveStartPos.y };
@@ -1904,6 +2059,7 @@ function handleSVGEvent(e) {
             svg.focus();
         }
     }
+    if (handleCanvasPanPointerEvent(e)) return;
     if ((editorData.mode == 'edit' || editorData.mode == 'move' || editorData.mode == 'preview') && e.type == 'pointermove') {
         // Get all elements under the mouse position
         const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
@@ -3276,10 +3432,12 @@ function dropAreasWithoutShape() {
 }
 
 function cancelEditor() {
-    applyZoom('zoom1x');
+    setZoom(1);
     editorData = null;
     editorSavedState = '';
     pendingUnsavedAction = null;
+    setSpacePanKey(false);
+    endCanvasPan();
     cleanupAssignableSelectpickerContainers();
     hideShapeChangeDialog();
     hideStyleDeleteDialog();
@@ -3355,15 +3513,25 @@ function executeEditorAction(action, $row, event) {
     switch (action) {
         //#region Main Toolbar
         case 'preview': {
-            applyZoom('zoom1x');
+            setZoom(1);
             togglePreview();
         }
         break;
-        case 'zoom1x':
-        case 'zoom2x':
-        case 'zoom3x':
-        case 'zoom4x':
-            applyZoom(action);
+        case 'zoom-decrease': {
+            setZoom(editorData.zoom - zoomButtonStep(-1));
+        }
+        break;
+        case 'zoom-reset': {
+            setZoom(1);
+        }
+        break;
+        case 'zoom-increase': {
+            setZoom(editorData.zoom + zoomButtonStep(1));
+        }
+        break;
+        case 'zoom-slider': {
+            setZoom((Number.parseFloat($(event.target).val()) || 100) / 100);
+        }
         break;
         case 'mode-edit': {
             setMode('edit');

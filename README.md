@@ -71,7 +71,7 @@ The designer has three main parts: the toolbar, the image canvas, and the assign
 The toolbar controls:
 
 - **Preview**: temporarily test area selection inside the designer.
-- **Zoom**: view the image at 100%, 200%, 300%, or 400%.
+- **Zoom**: scale the image from 50% to 400%.
 - **Mode**: switch between editing one shape and moving one or more selected shapes together.
 - **Shape**: choose polygon, rectangle, circle, or ellipse for the active area.
 - **Update**: choose how the active area is bound to REDCap data.
@@ -99,6 +99,8 @@ Changing the shape type of an existing area converts the geometry instead of del
 Useful editing shortcuts:
 
 - `Ctrl`-click an area in edit mode to add it to the current selection. In move mode, `Ctrl`-click an unselected area to add it to the selection.
+- Use the zoom slider or mouse wheel over the image canvas to zoom in 5% steps. Use the zoom buttons for adaptive 25% or 50% steps, or to reset to 100%.
+- Hold `Space` and drag the image canvas to pan the zoomed view.
 - Drag the square center handle in edit mode to move the active shape.
 - Hold `Ctrl` while dragging a center handle in edit mode to show radial guide lines and constrain movement to 45-degree directions from the drag start.
 - Hold `Alt` while dragging the square center handle in edit mode to duplicate the active shape and drag the copy.

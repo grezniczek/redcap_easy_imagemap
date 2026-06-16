@@ -249,22 +249,20 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                     <i class="fa-solid fa-eye"></i> <?= $this->tt_esc("button_preview") ?>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="<?= $this->tt_esc("aria_magnification_controls") ?>">
-                                <button type="button" class="btn btn-outline-secondary" disabled>
-                                    <i class="fa-solid fa-search"></i>
+                            <div class="btn-group btn-group-sm eim-zoom-control me-2" role="group" aria-label="<?= $this->tt_esc("aria_magnification_controls") ?>">
+                                <button type="button" data-action="zoom-decrease" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_decrease") ?>">
+                                    <i class="fa-solid fa-minus" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" data-action="zoom1x" class="btn btn-secondary zoombutton-active" title="<?= $this->tt_esc("tooltip_zoom_100") ?>">
-                                    1x
+                                <button type="button" data-action="zoom-reset" class="btn btn-outline-secondary eim-zoom-reset" title="<?= $this->tt_esc("tooltip_zoom_reset") ?>">
+                                    100%
                                 </button>
-                                <button type="button" data-action="zoom2x" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_200") ?>">
-                                    2x
+                                <button type="button" data-action="zoom-increase" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_increase") ?>">
+                                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" data-action="zoom3x" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_300") ?>">
-                                    3x
-                                </button>
-                                <button type="button" data-action="zoom4x" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_400") ?>">
-                                    4x
-                                </button>
+                                <span class="btn btn-outline-secondary eim-zoom-slider-wrap">
+                                    <input type="range" data-action="zoom-slider" class="form-range eim-zoom-slider" min="50" max="400" step="5" value="100" aria-label="<?= $this->tt_esc("aria_zoom_slider") ?>">
+                                    <span class="eim-zoom-value" data-zoom-readout aria-live="polite">100%</span>
+                                </span>
                             </div>
                             <div class="btn-group btn-group-sm me-2" role="group" aria-label="<?= $this->tt_esc("aria_edit_mode") ?>">
                                 <button type="button" class="btn btn-outline-secondary text-dark" disabled>

@@ -14,6 +14,43 @@
 .eim-editor .btn-toolbar .btn-group {
     margin-bottom: .2em;
 }
+.eim-editor .eim-zoom-control {
+    min-width: 0;
+}
+.eim-editor .eim-zoom-reset {
+    min-width: 48px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+.eim-editor .eim-zoom-slider-wrap {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 158px;
+    padding: 0 7px 0 9px;
+    color: #495057;
+    background: #fff;
+    cursor: default;
+}
+.eim-editor .eim-zoom-slider-wrap:hover,
+.eim-editor .eim-zoom-slider-wrap:focus-within {
+    color: #495057;
+    background: #fff;
+    border-color: #6c757d;
+}
+.eim-editor .eim-zoom-slider {
+    width: 100px;
+    min-width: 100px;
+    margin: 0;
+}
+.eim-editor .eim-zoom-value {
+    min-width: 32px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: #495057;
+    pointer-events: none;
+    text-align: right;
+}
 
 .eim-editor .modal-header {
     padding: 0.5rem 1rem;
@@ -379,6 +416,20 @@ svg.eim-svg.preview .background {
     padding: 0;
     touch-action: none;
     padding: 3px;
+}
+#eim-container.eim-pan-ready,
+#eim-container.eim-pan-ready svg.eim-svg,
+#eim-container.eim-pan-ready svg.eim-svg .background,
+#eim-container.eim-pan-ready svg.eim-svg .background.editing,
+#eim-container.eim-pan-ready svg.eim-svg .anchor {
+    cursor: grab;
+}
+#eim-container.eim-panning,
+#eim-container.eim-panning svg.eim-svg,
+#eim-container.eim-panning svg.eim-svg .background,
+#eim-container.eim-panning svg.eim-svg .background.editing,
+#eim-container.eim-panning svg.eim-svg .anchor {
+    cursor: grabbing;
 }
 table.eim-areas td {
     vertical-align: middle;
