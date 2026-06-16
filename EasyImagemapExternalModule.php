@@ -518,8 +518,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <button data-action="remove-selected-areas" class="btn btn-xs text-danger" style="margin-right:auto;"><i class="fa-regular fa-trash-alt"></i> <?= $this->tt_esc("button_remove_selected_areas") ?></button>
                         <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel 
                                                                                                     ?></button>
-                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fa-solid fa-save"></i> &nbsp; <?= RCView::tt("report_builder_28") // Save Changes 
-                                                                                                                                            ?></button>
+                        <button data-action="save" type="button" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-save"></i> &nbsp; <?= $this->tt_esc("button_save") ?></button>
+                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fa-solid fa-check"></i> &nbsp; <?= $this->tt_esc("button_save_close") ?></button>
                     </div>
                 </div>
             </div>

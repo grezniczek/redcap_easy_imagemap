@@ -113,11 +113,12 @@ Nützliche Bearbeitungs-Shortcuts:
 - Halten Sie `Ctrl` gedrückt, während Sie Formen im Verschiebemodus bewegen, um Bewegungsachsen anzuzeigen und die Bewegung auf 45-Grad-Schritte zu beschränken.
 - Verwenden Sie die Pfeiltasten, um im Bearbeitungsmodus den aktiven Griff oder im Verschiebemodus alle ausgewählten Formen zu bewegen.
 - Halten Sie `Shift` mit den Pfeiltasten gedrückt, um in 10-Pixel-Schritten statt in 1-Pixel-Schritten zu bewegen.
+- Drücken Sie `Ctrl-S`, um zu speichern, ohne den Designer zu schließen.
 - Drücken Sie `Delete` im Bearbeitungsmodus, um die Form des aktiven Bereichs zu löschen.
 - Drücken Sie `Esc` im Bearbeitungsmodus, um den aktiven Bereich zu verlassen.
 - Drücken Sie im Bearbeitungsmodus `m`, um in den Verschiebemodus zu wechseln, oder im Verschiebemodus `e`, um in den Bearbeitungsmodus zurückzuwechseln.
 
-Tastatur-Shortcuts werden ignoriert, während der Fokus in Eingabefeldern, Dropdowns, Schaltflächen oder anderen editierbaren Steuerelementen liegt. Dadurch stören sie nicht beim Zuordnen von Zielen oder Bearbeiten von Stilwerten.
+Die meisten Tastatur-Shortcuts für die Formbearbeitung werden ignoriert, während der Fokus in Eingabefeldern, Dropdowns, Schaltflächen oder anderen editierbaren Steuerelementen liegt. Dadurch stören sie nicht beim Zuordnen von Zielen oder Bearbeiten von Stilwerten.
 
 ## Bereiche REDCap-Feldern zuordnen
 
@@ -167,7 +168,7 @@ Mit **Vorschau** können Sie Auswahlen im Designer testen, ohne den Online Desig
 
 ![Der aktive Vorschaumodus ermöglicht die Vorschau aller Bereiche in Normal-, Hover- und Ausgewählt-Zustand.](screenshots/designer-preview-mode.png)
 
-Klicken Sie auf **Änderungen speichern**, wenn die Imagemap fertig ist. Wenn sich nichts geändert hat, aktualisiert das Modul die Projektmetadaten nicht und legt keinen Projekt-Logeintrag an. Wenn eine andere Person dieselbe Easy Imagemap-Konfiguration geändert hat, nachdem Sie den Designer geöffnet haben, fragt der Speicherdialog, ob die neuere Version überschrieben werden soll.
+Klicken Sie auf **Speichern**, um die aktuelle Imagemap in die REDCap-Metadaten zu schreiben, ohne den Designer zu schließen, oder auf **Speichern & schließen**, wenn die Imagemap fertig ist. `Ctrl-S` speichert ebenfalls ohne zu schließen. Wenn sich nichts geändert hat, aktualisiert das Modul die Projektmetadaten nicht und legt keinen Projekt-Logeintrag an. Wenn eine andere Person dieselbe Easy Imagemap-Konfiguration geändert hat, nachdem Sie den Designer geöffnet haben, fragt der Speicherdialog, ob die neuere Version überschrieben werden soll.
 
 Beim Speichern wird der Action-Tag-Parameter des beschreibenden Feldes direkt in den REDCap-Metadaten aktualisiert. Die Änderung wird im Projekt-Log mit der Aktion `Design` protokolliert.
 

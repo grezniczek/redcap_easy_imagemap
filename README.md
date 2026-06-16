@@ -113,11 +113,12 @@ Useful editing shortcuts:
 - Hold `Ctrl` while moving shapes in move mode to show movement axes and constrain movement to 45-degree steps.
 - Use arrow keys to move the active handle in edit mode or all selected shapes in move mode.
 - Hold `Shift` with arrow keys to move by 10 pixels instead of 1 pixel.
+- Press `Ctrl-S` to save without closing the designer.
 - Press `Delete` in edit mode to clear the active area's shape.
 - Press `Esc` in edit mode to leave the active area.
 - Press `m` in edit mode to switch to move mode, or `e` in move mode to switch back to edit mode.
 
-Keyboard shortcuts are ignored while focus is inside inputs, dropdowns, buttons, or other editable controls, so they do not interfere with assigning targets or editing style values.
+Most shape-editing keyboard shortcuts are ignored while focus is inside inputs, dropdowns, buttons, or other editable controls, so they do not interfere with assigning targets or editing style values.
 
 ## Assigning Areas To REDCap Fields
 
@@ -167,7 +168,7 @@ Use **Preview** to test selections inside the designer without leaving Online De
 
 ![Active preview mode allows to preview all the areas in native, hover, and selected states.](screenshots/designer-preview-mode.png)
 
-Click **Save Changes** when the map is ready. If nothing changed, the module does not update project metadata and does not add a project log entry. If another user changed the same Easy Imagemap configuration after you opened the designer, the save dialog asks whether to overwrite the newer version.
+Click **Save** to write the current map to REDCap metadata without closing the designer, or **Save & Close** when the map is ready. `Ctrl-S` also saves without closing. If nothing changed, the module does not update project metadata and does not add a project log entry. If another user changed the same Easy Imagemap configuration after you opened the designer, the save dialog asks whether to overwrite the newer version.
 
 Saving updates the descriptive field's action tag parameter directly in REDCap metadata and logs the change in the project log with action `Design`.
 

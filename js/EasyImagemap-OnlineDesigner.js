@@ -19,6 +19,7 @@ let editorData = null;
 let editorSavedState = '';
 let suppressBeforeUnload = false;
 let pendingUnsavedAction = null;
+let pendingSaveCloseOnSuccess = false;
 let $targetPickerMenu = $();
 
 /** @type {string} The current area */
@@ -529,6 +530,13 @@ function handleWindowKeyEvent(event) {
             event.stopPropagation();
             return false;
         }
+    }
+    const isSaveShortcut = event.type == 'keydown' && !event.repeat && (event.ctrlKey || event.metaKey) && key == 's';
+    if (isSaveShortcut && editorData) {
+        event.preventDefault();
+        event.stopPropagation();
+        saveMap(false, false);
+        return false;
     }
     const isReloadShortcut = key == 'f5' || ((event.ctrlKey || event.metaKey) && key == 'r');
     if (!isReloadShortcut || !hasUnsavedEditorChanges()) return;
@@ -3436,6 +3444,7 @@ function cancelEditor() {
     editorData = null;
     editorSavedState = '';
     pendingUnsavedAction = null;
+    pendingSaveCloseOnSuccess = false;
     setSpacePanKey(false);
     endCanvasPan();
     cleanupAssignableSelectpickerContainers();
@@ -3454,26 +3463,27 @@ function cancelEditor() {
     $('.to-top-button').show();
 }
 
-function saveMap(overwrite) {
+function saveMap(overwrite, closeOnSuccess = true) {
     clearCurrentArea();
     dropAreasWithoutShape();
     const data = buildMapPayload();
     data.overwrite = overwrite === true;
     JSMO.ajax('save-map', data).then(function(response) {
-        handleSaveResponse(response);
+        handleSaveResponse(response, closeOnSuccess === true);
     }).catch(function(err) {
         showToast(tt('toast_failed_save', 'Failed to save data. Check console for details.'), 'error');
         error(err);
     });
 }
 
-function handleSaveResponse(response) {
+function handleSaveResponse(response, closeOnSuccess) {
     if (!response || !response.status) {
         showSaveBlockedDialog(tt('dialog_save_missing_response', 'The save request did not complete. Reload the Online Designer and try again.'));
         error(response);
         return;
     }
     if (response && response.status == 'conflict') {
+        pendingSaveCloseOnSuccess = closeOnSuccess === true;
         showSaveConflictDialog(response.message);
         return;
     }
@@ -3486,6 +3496,7 @@ function handleSaveResponse(response) {
     }
     hideSaveConflictDialog();
     hideSaveBlockedDialog();
+    pendingSaveCloseOnSuccess = false;
     if (response.status == 'unchanged') {
         markEditorStateSaved();
         showToast(response.message || tt('toast_no_changes', 'No changes to save.'), 'info');
@@ -3499,7 +3510,9 @@ function handleSaveResponse(response) {
         error(response);
         return;
     }
-    executeEditorAction('cancel', $());
+    if (closeOnSuccess) {
+        executeEditorAction('cancel', $());
+    }
 }
 
 
@@ -3604,10 +3617,11 @@ function executeEditorAction(action, $row, event) {
         break;
         case 'save-conflict-confirm': {
             hideSaveConflictDialog();
-            saveMap(true);
+            saveMap(true, pendingSaveCloseOnSuccess);
         }
         break;
         case 'save-conflict-cancel': {
+            pendingSaveCloseOnSuccess = false;
             hideSaveConflictDialog();
         }
         break;
@@ -3742,7 +3756,11 @@ function executeEditorAction(action, $row, event) {
         }
         break;
         case 'apply': {
-            saveMap(false);
+            saveMap(false, true);
+        }
+        break;
+        case 'save': {
+            saveMap(false, false);
         }
         break;
         //#endregion
