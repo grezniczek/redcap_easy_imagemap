@@ -209,6 +209,10 @@ For production projects, deploy module code and project metadata updates togethe
 
 Invalid JSON in the action tag remains a hard error and must be fixed manually. Invalid individual areas are skipped during display when possible, and save-time validation prevents incomplete or invalid designer areas from being silently persisted.
 
+## Example
+
+The example fields shown in this document (descriptive with inline image and three checkbox fields) are available as a [REDCap.PasteableFields JSON file](demo/IllustrativeJointMap.PastableFields.json). Open this file, copy its contents, and paste them into a form in the Online Designer.
+
 ## License And Third-Party Material
 
 The Easy Imagemap module source code is licensed under the MIT License. This license does not relicense third-party material shown or referenced in the documentation, including REDCap user interface elements, REDCap names and trademarks, cited or demo artwork such as the Servier Medical Art-derived example image, or project-specific source images visible in screenshots. Those materials remain subject to their respective licenses, terms, and rights holders.
