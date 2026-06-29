@@ -10,6 +10,7 @@ use UserRights;
 
 require_once "classes/ActionTagHelper.php";
 require_once "classes/InjectionHelper.php";
+require_once "classes/MapDataHelper.php";
 
 class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 {
@@ -77,19 +78,22 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
     {
         $this->init_proj($project_id);
-        switch ($action) {
-            case "get-fields":
-                return $this->get_qualifying_fields($payload);
-
-            case "edit-map":
-                return $this->get_field_info($payload);
-
-            case "save-map":
-                return $this->save_eim_data($payload);
-
-            default:
-                return null;
+        $user = $this->framework->getUser($user_id);
+        $rights = $user->getRights($project_id);
+        // All actions require design rights
+        if ($rights["design"] == "1") {
+            switch ($action) {
+                case "get-fields":
+                    return $this->get_qualifying_fields($payload);
+    
+                case "edit-map":
+                    return $this->get_field_info($payload);
+    
+                case "save-map":
+                    return $this->save_eim_data($payload);
+            }
         }
+        return null;
     }
 
     #endregion
@@ -109,6 +113,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "version" => $this->VERSION,
             "debug" => $this->js_debug,
             "hashes" => [],
+            "lang" => $this->get_js_lang(),
         );
         $page_fields = is_array($formOrFormFields) ? $formOrFormFields : $this->get_form_fields($formOrFormFields);
         // Process all map fields and assemble metadata needed for map rendering
@@ -122,8 +127,18 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             $map_targets = [];
             foreach ($mf_meta["map"] as $_ => $map) {
                 if (($map["target"] ?? "") == "") continue; // Skip when no target is set
+                if (strpos($map["target"], ":") === false) {
+                    $warnings[] = $this->tt_format("warning_invalid_target_removed", $map["target"]);
+                    continue;
+                }
                 list($target_field, $code) = explode(":", $map["target"], 2);
-                $target_field_info = $this->get_field_metadata($target_field);
+                try {
+                    $target_field_info = $this->get_field_metadata($target_field);
+                }
+                catch (\Throwable $_) {
+                    $errors[] = $this->tt_format("warning_target_field_missing_removed", $target_field);
+                    continue;
+                }
                 $target_type = $target_field_info["element_type"];
                 $target_enum = parseEnum($target_field_info["element_enum"]);
                 // Does the field exist?
@@ -135,11 +150,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             "mode" => $map["mode"] ?? "2-way",
                             "code" => $code,
                             "tooltip" => $map["tooltip"] ?? false,
-                            "label" => empty($map["label"]) ? $target_enum[$code] : $map["label"],
-                            "style" => $map["style"] ?? [],
+                            "label" => empty($map["label"]) ? ($target_enum[$code] ?? $this->tt("option_empty_reset")) : $map["label"],
+                            "style" => $map["style"] ?? MapDataHelper::DEFAULT_STYLE_NAME,
                         ];
                         $hasShape = false;
-                        foreach (['poly', 'rect', 'ell'] as $shape) {
+                        foreach (['poly', 'rect', 'circle', 'ell'] as $shape) {
                             if (isset($map[$shape]) && !empty($map[$shape])) {
                                 $area[$shape] = $map[$shape];
                                 $hasShape = true;
@@ -149,14 +164,14 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                             $areas[] = $area;
                         }
                         else {
-                            $warnings[] = "Target field '$target_field' has no valid shape for '$code'. The corresponding map has been removed.";
+                            $warnings[] = $this->tt_format("warning_target_no_shape_removed", $target_field, $code);
                         }
                     } else {
-                        $warnings[] = "Target field '$target_field' has no matching option for '$code'. The corresponding map has been removed.";
+                        $warnings[] = $this->tt_format("warning_target_no_option_removed", $target_field, $code);
                     }
                     $map_targets[$target_field] = $target_type;
                 } else {
-                    $errors[] = "Target field '$target_field' is not on this data entry form or survey page. The corresponding map has been removed.";
+                    $errors[] = $this->tt_format("warning_target_not_on_page_removed", $target_field);
                 }
             }
             if (count($mf_meta["map"] ?? [])) {
@@ -164,6 +179,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 $maps[$map_field_name]["hash"] = $edoc_hash;
                 $maps[$map_field_name]["areas"] = $areas;
                 $maps[$map_field_name]["bounds"] = $mf_meta["bounds"];
+                $maps[$map_field_name]["styles"] = $mf_meta["styles"];
                 $targets = array_merge($targets, $map_targets);
             }
         }
@@ -200,6 +216,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "version" => $this->VERSION,
             "fields" => $fields,
             "form" => $form,
+            "lang" => $this->get_js_lang(),
         ];
         $this->initializeJavascriptModuleObject();
         $jsmo_name = $this->getJavascriptModuleObjectName();
@@ -222,114 +239,229 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <div class="eim-editor-title mb-1">
                             <i class="fa-solid fa-draw-polygon eim-icon me-1"></i>
                             <span id="eim-editor-title">
-                                <b>Easy Imagemap</b> &ndash; Editing field:
+                                <b><?= $this->tt_esc("app_title") ?></b> &ndash; <?= $this->tt_esc("designer_editing_field") ?>
                                 <span class="field-name"></span>
                             </span>
                         </div>
-                        <div class="btn-toolbar mt-2" role="toolbar" aria-label="Main toolbar">
-                            <div class="btn-group btn-group-sm me-1" role="group" aria-label="Preview controls">
+                        <div class="btn-toolbar mt-2" role="toolbar" aria-label="<?= $this->tt_esc("aria_main_toolbar") ?>">
+                            <div class="btn-group btn-group-sm me-1" role="group" aria-label="<?= $this->tt_esc("aria_preview_controls") ?>">
                                 <button type="button" data-action="preview" class="btn btn-outline-primary">
-                                    <i class="fa-solid fa-eye"></i> Preview
+                                    <i class="fa-solid fa-eye"></i> <?= $this->tt_esc("button_preview") ?>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Magnification controls">
-                                <button type="button" class="btn btn-outline-secondary" disabled>
-                                    <i class="fa-solid fa-search"></i>
+                            <div class="btn-group btn-group-sm eim-zoom-control me-2" role="group" aria-label="<?= $this->tt_esc("aria_magnification_controls") ?>">
+                                <button type="button" data-action="zoom-decrease" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_decrease") ?>">
+                                    <i class="fa-solid fa-minus" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" data-action="zoom1x" class="btn btn-secondary zoombutton-active" title="Set zoom to 100%">
-                                    1x
+                                <button type="button" data-action="zoom-reset" class="btn btn-outline-secondary eim-zoom-reset" title="<?= $this->tt_esc("tooltip_zoom_reset") ?>">
+                                    100%
                                 </button>
-                                <button type="button" data-action="zoom2x" class="btn btn-outline-secondary" title="Set zoom to 200%">
-                                    2x
+                                <button type="button" data-action="zoom-increase" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_zoom_increase") ?>">
+                                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
                                 </button>
-                                <button type="button" data-action="zoom3x" class="btn btn-outline-secondary" title="Set zoom to 300%">
-                                    3x
-                                </button>
-                                <button type="button" data-action="zoom4x" class="btn btn-outline-secondary" title="Set zoom to 400%">
-                                    4x
-                                </button>
+                                <span class="btn btn-outline-secondary eim-zoom-slider-wrap">
+                                    <input type="range" data-action="zoom-slider" class="form-range eim-zoom-slider" min="50" max="400" step="5" value="100" aria-label="<?= $this->tt_esc("aria_zoom_slider") ?>">
+                                    <span class="eim-zoom-value" data-zoom-readout aria-live="polite">100%</span>
+                                </span>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Edit mode">
+                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="<?= $this->tt_esc("aria_edit_mode") ?>">
                                 <button type="button" class="btn btn-outline-secondary text-dark" disabled>
-                                    Mode
+                                    <?= $this->tt_esc("toolbar_mode") ?>
                                 </button>
-                                <button type="button" data-action="mode-edit" class="btn btn-secondary" title="Edit shapes">
+                                <button type="button" data-action="mode-edit" class="btn btn-secondary" title="<?= $this->tt_esc("tooltip_edit_shapes") ?>">
                                     <i class="fa-solid fa-pen-nib"></i>
                                 </button>
-                                <button type="button" data-action="mode-move" class="btn btn-outline-secondary" title="Move shapes">
+                                <button type="button" data-action="mode-move" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_move_shapes") ?>">
                                     <i class="fa-solid fa-arrows-up-down-left-right"></i>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Shape type">
+                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="<?= $this->tt_esc("aria_shape_type") ?>">
                                 <button type="button" class="btn btn-outline-secondary text-dark" disabled>
-                                    Shape
+                                    <?= $this->tt_esc("toolbar_shape") ?>
                                 </button>
-                                <button type="button" data-action="type-ell" class="btn btn-secondary" title="Set shape to ellipse">
+                                <button type="button" data-action="type-circle" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_shape_circle") ?>">
                                     <i class="fa-regular fa-circle"></i>
                                 </button>
-                                <button type="button" data-action="type-rect" class="btn btn-outline-secondary" title="Set shape to rectangle">
+                                <button type="button" data-action="type-ell" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_shape_ellipse") ?>">
+                                    <i class="fa-solid fa-circle-notch"></i>
+                                </button>
+                                <button type="button" data-action="type-rect" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_shape_rectangle") ?>">
                                     <i class="fa-regular fa-square"></i>
                                 </button>
-                                <button type="button" data-action="type-poly" class="btn btn-outline-secondary" title="Set shape to polygon">
+                                <button type="button" data-action="type-poly" class="btn btn-secondary" title="<?= $this->tt_esc("tooltip_shape_polygon") ?>">
                                     <i class="fa-solid fa-draw-polygon"></i>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Styling">
-                                <button class="btn btn-outline-primary text-dark" disabled>Style</button>
-                                <button data-action="style-regular" class="btn btn-outline-primary" title="Set regular style">
-                                    <i class="fa-regular fa-square"></i>
-                                </button>
-                                <button data-action="style-hover" class="btn btn-outline-primary" title="Set style on hover">
-                                    <i class="fa-solid fa-arrow-pointer"></i>
-                                </button>
-                                <button data-action="style-selected" class="btn btn-outline-primary" title="Set style on selection">
-                                    <i class="fa-solid fa-square-check"></i>
-                                </button>
-                                <button data-action="style-apply-to-selected" class="btn btn-outline-primary" title="Apply to selected targets">
-                                    <i class="fa-regular fa-pen-to-square"></i>
-                                </button>
-                            </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Update mode">
-                                <button class="btn btn-outline-primary text-dark" disabled>Update</button>
-                                <button data-action="mode-two-way" class="btn btn-outline-primary" title="Two-way update">
+                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="<?= $this->tt_esc("aria_update_mode") ?>">
+                                <button class="btn btn-outline-primary text-dark" disabled><?= $this->tt_esc("toolbar_update") ?></button>
+                                <button data-action="mode-two-way" class="btn btn-outline-primary" title="<?= $this->tt_esc("tooltip_mode_two_way") ?>">
                                     <i class="fa-solid fa-exchange-alt"></i>
                                 </button>
-                                <button data-action="mode-to-target" class="btn btn-outline-primary" title="One-way update to target">
+                                <button data-action="mode-to-target" class="btn btn-outline-primary" title="<?= $this->tt_esc("tooltip_mode_to_target") ?>">
                                     <i class="fa-solid fa-right-to-bracket"></i>
                                 </button>
-                                <button data-action="mode-from-target" class="btn btn-outline-primary" title="One-way update from target">
+                                <button data-action="mode-from-target" class="btn btn-outline-primary" title="<?= $this->tt_esc("tooltip_mode_from_target") ?>">
                                     <i class="fa-solid fa-right-from-bracket fa-rotate-180"></i>
                                 </button>
-                                <button data-action="mode-apply-to-selected" class="btn btn-outline-primary" title="Apply to selected targets">
+                                <button data-action="mode-apply-to-selected" class="btn btn-outline-primary" title="<?= $this->tt_esc("tooltip_mode_apply_selected") ?>">
                                     <i class="fa-regular fa-pen-to-square"></i>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm me-2" role="group" aria-label="Settings">
-                                <button data-action="change-settings" class="btn btn-outline-secondary" title="Edit settings">
-                                    <i class="fa-solid fa-cog"></i>
-                                </button>
+                        </div>
+                    </div>
+                    <div class="eim-shape-change-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-shape-change-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-shape-change-title"><?= $this->tt_esc("dialog_shape_change_title") ?></h5>
+                            <p>
+                                <?= $this->tt_esc("dialog_shape_change_intro") ?>
+                            </p>
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input" data-eim-shape-change-skip>
+                                <span class="form-check-label"><?= $this->tt_esc("label_do_not_ask_again") ?></span>
+                            </label>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="shape-change-cancel" class="btn btn-secondary btn-sm"><?= $this->tt_esc("button_cancel") ?></button>
+                                <button type="button" data-action="shape-change-confirm" class="btn btn-primary btn-sm"><?= $this->tt_esc("button_convert_shape") ?></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="eim-style-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-style-delete-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-style-delete-title"><?= $this->tt_esc("dialog_style_delete_title") ?></h5>
+                            <p data-eim-style-delete-message>
+                                <?= $this->tt_esc("dialog_style_delete_intro") ?>
+                            </p>
+                            <label class="eim-style-delete-reassign">
+                                <?= $this->tt_esc("label_reassign_areas_to") ?>
+                                <select data-eim-style-delete-reassign class="form-control form-control-sm"></select>
+                            </label>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="style-delete-cancel" class="btn btn-secondary btn-sm"><?= $this->tt_esc("button_cancel") ?></button>
+                                <button type="button" data-action="style-delete-confirm" class="btn btn-danger btn-sm"><?= $this->tt_esc("button_delete_style") ?></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="eim-save-conflict-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-save-conflict-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-save-conflict-title"><?= $this->tt_esc("dialog_save_conflict_title") ?></h5>
+                            <p data-eim-save-conflict-message>
+                                <?= $this->tt_esc("dialog_save_conflict_message") ?>
+                            </p>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="save-conflict-cancel" class="btn btn-secondary btn-sm"><?= $this->tt_esc("button_no") ?></button>
+                                <button type="button" data-action="save-conflict-confirm" class="btn btn-danger btn-sm"><?= $this->tt_esc("button_overwrite") ?></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="eim-save-blocked-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-save-blocked-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-save-blocked-title"><?= RCView::tt("global_01") // ERROR ?></h5>
+                            <p data-eim-save-blocked-message>
+                                <?= $this->tt_esc("dialog_save_blocked_message") ?>
+                            </p>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="save-blocked-close" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel ?></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="eim-unsaved-changes-dialog" role="dialog" aria-modal="true" aria-labelledby="eim-unsaved-changes-title" style="display:none;">
+                        <div class="eim-shape-change-card">
+                            <h5 id="eim-unsaved-changes-title"><?= $this->tt_esc("dialog_unsaved_changes_title") ?></h5>
+                            <p>
+                                <?= $this->tt_esc("dialog_unsaved_changes_message") ?>
+                            </p>
+                            <div class="eim-shape-change-actions">
+                                <button type="button" data-action="unsaved-discard-cancel" class="btn btn-secondary btn-sm"><?= $this->tt_esc("button_stay") ?></button>
+                                <button type="button" data-action="unsaved-discard-confirm" class="btn btn-danger btn-sm"><?= $this->tt_esc("button_discard_changes") ?></button>
                             </div>
                         </div>
                     </div>
                     <div class="modal-body">
                         <div class="area-assignments">
                             <div class="area-assignments-intro">
-                                Add or edit areas, then assign them to a target (field or choice).
+                                <?= $this->tt_esc("designer_intro") ?>
+                            </div>
+                            <button type="button" data-action="style-panel-show" class="btn btn-outline-secondary btn-sm eim-style-panel-toggle">
+                                <i class="fa-solid fa-palette"></i> <?= $this->tt_esc("style_panel_title") ?>
+                            </button>
+                            <div class="eim-style-panel" style="display:none;">
+                                <div class="eim-style-panel-title">
+                                    <span><i class="fa-solid fa-palette"></i> <?= $this->tt_esc("style_panel_title") ?></span>
+                                    <button type="button" data-action="style-panel-hide" class="btn btn-link btn-sm" title="<?= $this->tt_esc("tooltip_hide_style_panel") ?>">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div class="eim-style-selector">
+                                    <select data-action="style-select" class="form-control form-control-sm" title="<?= $this->tt_esc("label_style") ?>"></select>
+                                    <button type="button" data-action="style-add-start" class="btn btn-outline-secondary btn-sm" title="<?= $this->tt_esc("tooltip_add_new_style") ?>">
+                                        <i class="fa-solid fa-add"></i>
+                                    </button>
+                                    <span class="eim-disabled-tooltip-wrapper" data-style-delete-wrapper title="<?= $this->tt_esc("tooltip_delete_style") ?>">
+                                        <button type="button" data-action="style-delete-start" class="btn btn-outline-danger btn-sm">
+                                            <i class="fa-regular fa-trash-alt"></i>
+                                        </button>
+                                    </span>
+                                    <button type="button" data-action="style-apply-to-selected" class="btn btn-outline-secondary btn-sm" title="<?= $this->tt_esc("tooltip_apply_style_selected") ?>">
+                                        <i class="fa-regular fa-pen-to-square"></i>
+                                    </button>
+                                </div>
+                                <div class="eim-style-new" style="display:none;">
+                                    <input type="text" class="form-control form-control-sm" data-style-new-name placeholder="<?= $this->tt_esc("placeholder_new_style_name") ?>" maxlength="64">
+                                    <button type="button" data-action="style-add-confirm" class="btn btn-primary btn-sm" title="<?= $this->tt_esc("tooltip_create_style") ?>">
+                                        <i class="fa-solid fa-check"></i>
+                                    </button>
+                                    <button type="button" data-action="style-add-cancel" class="btn btn-outline-secondary btn-sm" title="<?= $this->tt_esc("button_cancel") ?>">
+                                        <i class="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div class="eim-style-states">
+                                    <button type="button" data-action="style-regular" class="eim-style-state active" title="<?= $this->tt_esc("tooltip_edit_normal_style") ?>">
+                                        <span class="eim-state-label"><?= $this->tt_esc("style_state_normal") ?></span>
+                                        <span class="eim-state-swatch" data-style-state-preview="regular"></span>
+                                    </button>
+                                    <button type="button" data-action="style-hover" class="eim-style-state" title="<?= $this->tt_esc("tooltip_edit_hover_style") ?>">
+                                        <span class="eim-state-label"><?= $this->tt_esc("style_state_hover") ?></span>
+                                        <span class="eim-state-swatch" data-style-state-preview="hover"></span>
+                                    </button>
+                                    <button type="button" data-action="style-selected" class="eim-style-state" title="<?= $this->tt_esc("tooltip_edit_selected_style") ?>">
+                                        <span class="eim-state-label"><?= $this->tt_esc("style_state_selected") ?></span>
+                                        <span class="eim-state-swatch" data-style-state-preview="selected"></span>
+                                    </button>
+                                </div>
+                                <div class="eim-style-grid">
+                                    <span class="eim-style-control"><input type="color" data-action="style-change" data-style-prop="fill" value="#ffa500" aria-label="<?= $this->tt_esc("style_prop_fill") ?>"> <span aria-hidden="true"><?= $this->tt_esc("style_prop_fill") ?></span></span>
+                                    <span class="eim-style-control"><input type="color" data-action="style-change" data-style-prop="stroke" value="#ffa500" aria-label="<?= $this->tt_esc("style_prop_stroke") ?>"> <span aria-hidden="true"><?= $this->tt_esc("style_prop_stroke") ?></span></span>
+                                    <label class="eim-style-control"><input type="number" data-action="style-change" data-style-prop="fillOpacity" min="0" max="1" step="0.05" value="0.05"> <?= $this->tt_esc("style_prop_fill_opacity") ?></label>
+                                    <label class="eim-style-control"><input type="number" data-action="style-change" data-style-prop="strokeOpacity" min="0" max="1" step="0.05" value="1"> <?= $this->tt_esc("style_prop_stroke_opacity") ?></label>
+                                    <div class="eim-style-actions btn-group btn-group-xs" role="group" aria-label="<?= $this->tt_esc("aria_style_copy_sync") ?>">
+                                        <button type="button" data-action="style-copy" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_copy_style_state") ?>">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                        <button type="button" data-action="style-paste" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_paste_style_state") ?>">
+                                            <i class="fa-regular fa-paste"></i>
+                                        </button>
+                                        <button type="button" data-action="style-sync-states" class="btn btn-outline-secondary" title="<?= $this->tt_esc("tooltip_sync_style_states") ?>">
+                                            <i class="fa-solid fa-link"></i>
+                                        </button>
+                                    </div>
+                                    <label class="eim-style-control"><input type="number" data-action="style-change" data-style-prop="strokeWidth" min="0" max="20" step="0.5" value="1"> <?= $this->tt_esc("style_prop_stroke_width") ?></label>
+                                </div>
                             </div>
                             <div class="area-assignments-table">
                                 <table class="table eim-areas table-sm">
                                     <thead>
                                         <tr>
                                             <th><!-- Drag handle --></th>
-                                            <th scope="col" class="text-center eim-col-edit" title="Edit">
+                                            <th scope="col" class="text-center eim-col-edit" title="<?= $this->tt_esc("table_col_edit") ?>">
                                                 <a data-action="reset-area" href="javascript:;"><i class="fa-solid fa-pencil"></i></a>
                                             </th>
-                                            <th scope="col" class="text-center eim-col-select" title="Select">
+                                            <th scope="col" class="text-center eim-col-select" title="<?= $this->tt_esc("table_col_select") ?>">
                                                 <a data-action="toggle-select-all" href="javascript:;"><i class="fa-solid fa-check"></i></a>
                                             </th>
-                                            <th scope="col" class="text-center eim-col-style" title="Style preview. Move the mouse over the preview to see the hover style; check a row to see the checked style."><i class="fa-solid fa-palette"></i></th>
-                                            <th scope="col" class="eim-col-target">Target</th>
-                                            <th scope="col" class="eim-col-actions">Action</th>
+                                            <th scope="col" class="text-center eim-col-style" title="<?= $this->tt_esc("tooltip_style_preview_col") ?>"><i class="fa-solid fa-palette"></i></th>
+                                            <th scope="col" class="text-center eim-col-mode" title="<?= $this->tt_esc("tooltip_update_mode_col") ?>"><i class="fa-solid fa-bolt"></i></th>
+                                            <th scope="col" class="eim-col-target"><?= $this->tt_esc("table_col_target") ?></th>
+                                            <th scope="col" class="eim-col-actions"><?= $this->tt_esc("table_col_action") ?></th>
                                         </tr>
                                     </thead>
                                     <tbody class="area-list empty-on-close"></tbody>
@@ -349,28 +481,33 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                                             <td class="text-center">
                                                 <div class="area-style-sample"></div>
                                             </td>
+                                            <td class="text-center eim-col-mode">
+                                                <button type="button" data-action="cycle-area-mode" class="btn btn-default btn-xs area-mode-toggle" title="<?= $this->tt_esc("tooltip_mode_two_way") ?>" aria-label="<?= $this->tt_esc("tooltip_mode_two_way") ?>">
+                                                    <i class="fa-solid fa-exchange-alt" aria-hidden="true"></i>
+                                                </button>
+                                            </td>
                                             <td>
-                                                <div class="form-inline" data-action="assign-target">
-                                                    <select data-live-search="true" class="form-control form-control-sm assignables" data-width="100%">
+                                                <div class="form-inline">
+                                                    <select class="form-control form-control-sm assignables">
                                                         <!-- Assignable field options -->
                                                     </select>
                                                 </div>
                                             </td>
                                             <td>
-                                                <button data-action="add-area" class="btn btn-default btn-xs" title="Add new row after this one">
+                                                <button data-action="add-area" class="btn btn-default btn-xs eim-action-btn-xs" title="<?= $this->tt_esc("tooltip_add_area_after") ?>">
                                                     <i class="fa-solid fa-add"></i>
                                                 </button>
-                                                <button data-action="duplicate-area" class="btn btn-default btn-xs" title="Add a new row based on this one">
+                                                <button data-action="duplicate-area" class="btn btn-default btn-xs eim-action-btn-xs" title="<?= $this->tt_esc("tooltip_duplicate_area") ?>">
                                                     <i class="fa-solid fa-clone"></i>
                                                 </button>
-                                                <button data-action="remove-area" class="btn btn-default btn-xs" title="Remove this row">
+                                                <button data-action="remove-area" class="btn btn-default btn-xs eim-action-btn-xs" title="<?= $this->tt_esc("tooltip_remove_area") ?>">
                                                     <i class="fa-solid fa-trash-can text-danger"></i>
                                                 </button>
                                             </td>
                                         </tr>
                                     </template>
                                 </table>
-                                <p class="show-when-no-areas"><i>No areas have been defined yet.</i>
+                                <p class="show-when-no-areas"><i><?= $this->tt_esc("message_no_areas") ?></i>
                                     <button data-action="add-area" class="btn btn-success btn-xs"><i class="fa-solid fa-add"></i></button>
                                 </p>
                             </div>
@@ -378,11 +515,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                         <div id="eim-container" class="empty-on-close"></div>
                     </div>
                     <div class="modal-footer">
-                        <button data-action="remove-selected-areas" class="btn btn-xs text-danger" style="margin-right:auto;"><i class="fa-regular fa-trash-alt"></i> Remove selected areas</button>
+                        <button data-action="remove-selected-areas" class="btn btn-xs text-danger" style="margin-right:auto;"><i class="fa-regular fa-trash-alt"></i> <?= $this->tt_esc("button_remove_selected_areas") ?></button>
                         <button data-action="cancel" type="button" class="btn btn-secondary btn-sm"><?= RCView::tt("global_53") // Cancel 
                                                                                                     ?></button>
-                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fa-solid fa-save"></i> &nbsp; <?= RCView::tt("report_builder_28") // Save Changes 
-                                                                                                                                            ?></button>
+                        <button data-action="save" type="button" class="btn btn-outline-success btn-sm"><i class="fa-solid fa-save"></i> &nbsp; <?= $this->tt_esc("button_save") ?></button>
+                        <button data-action="apply" type="button" class="btn btn-success btn-sm"><i class="fa-solid fa-check"></i> &nbsp; <?= $this->tt_esc("button_save_close") ?></button>
                     </div>
                 </div>
             </div>
@@ -395,6 +532,54 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     #endregion
 
     #region Private Helpers
+
+    private function tt_esc($key)
+    {
+        return htmlspecialchars($this->tt($key), ENT_QUOTES);
+    }
+
+    private function tt_format($key, ...$args)
+    {
+        return sprintf($this->tt($key), ...$args);
+    }
+
+    private function get_js_lang()
+    {
+        $keys = [
+            "app_title",
+            "button_configure_imagemap",
+            "option_not_assigned",
+            "target_used_marker",
+            "tooltip_target_already_assigned",
+            "toast_failed_initialize_area",
+            "toast_enter_style_name",
+            "toast_style_name_exists",
+            "toast_failed_save",
+            "toast_no_changes",
+            "toast_saved",
+            "dialog_shape_change_message",
+            "shape_circle",
+            "shape_ellipse",
+            "shape_rectangle",
+            "shape_polygon",
+            "shape_unknown",
+            "tooltip_delete_style",
+            "tooltip_delete_style_disabled",
+            "style_name_base",
+            "dialog_style_delete_message",
+            "dialog_save_conflict_message",
+            "dialog_save_blocked_message",
+            "dialog_save_missing_response",
+            "dialog_save_unexpected_response",
+            "display_failed_setup_map",
+            "display_failed_add_interactivity",
+        ];
+        $lang = [];
+        foreach ($keys as $key) {
+            $lang[$key] = $this->tt($key);
+        }
+        return $lang;
+    }
 
     /**
      * Gets field and other metadata needed for the Online Designer integration
@@ -410,16 +595,17 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $qualified_fields = $this->get_qualifying_fields($form_name);
         // Does it have the action tag?
         if (!array_key_exists($field_name, $qualified_fields)) {
-            throw new Exception("Field '$field_name' is not marked with $tagname!");
+            throw new Exception($this->tt_format("error_field_not_marked", $field_name, $tagname));
         }
-        // Extract action tag parameter. The parameter is a JSON string that must be wrapped in single quotes!
-        $tag = array_pop(ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG));
+        // Extract action tag parameter.
+        $tags = ActionTagHelper::parseActionTags($field["misc"], self::ACTIONTAG);
+        $tag = array_pop($tags);
         $params = trim($tag["params"]);
         if ($params == "") $params = "{}";
         try {
             $params = json_decode($params, true, 512, JSON_THROW_ON_ERROR);
         } catch (\Throwable $_) {
-            throw new Exception("Failed to parse $tagname parameter for field '$field_name' (invalid JSON). Fix or remove/reset it manually!");
+            throw new Exception($this->tt_format("error_parse_actiontag", $tagname, $field_name));
         }
         $assignables = array();
         $form_fields = $this->get_form_fields($form_name);
@@ -435,13 +621,13 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                     if ($this_type != "checkbox") {
                         $options[] = array(
                             "code" => "{$this_field_name}:",
-                            "label" => "(empty/reset)",
+                            "label" => $this->tt("option_empty_reset"),
                         );
                     }
                     foreach ($enum as $code => $label) {
                         $options[] = array(
                             "code" => "{$this_field_name}:{$code}",
-                            "label" => $label,
+                            "label" => strip_tags($label),
                         );
                     }
                     $assignables[] = array(
@@ -454,12 +640,15 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
                 }
             }
         }
+        $map_config = MapDataHelper::normalize($params);
         return [
             "fieldName" => $field_name,
             "formName" => $form_name,
             "hash" => $qualified_fields[$field_name],
-            "map" => empty($params) ? [] : $params["shapes"],
-            "bounds" => empty($params) ? [] : $params["bounds"],
+            "configHash" => $this->get_map_config_hash($map_config),
+            "map" => $map_config["shapes"],
+            "bounds" => $map_config["bounds"],
+            "styles" => $map_config["styles"],
             "assignables" => $assignables,
         ];
     }
@@ -476,7 +665,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $fields = [];
         $forms = $this->get_project_forms();
         if (!isset($forms[$form])) {
-            throw new Exception("Form '$form' does not exist!");
+            throw new Exception($this->tt_format("error_form_missing", $form));
         }
         foreach ($forms[$form]["fields"] as $field_name => $_) {
             $field_meta = $this->get_field_metadata($field_name);
@@ -496,38 +685,138 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     /**
      * Saves designer data in a field's Action Tag / Field Annotation ('misc')
      * @param Array $data 
-     * @return true 
+     * @return array
      * @throws Exception Throws in case of failure
      */
     private function save_eim_data($data)
     {
         $this->require_proj();
+        $save_block_message = $this->get_designer_save_block_message();
+        if ($save_block_message !== "") {
+            return [
+                "status" => "blocked",
+                "message" => $save_block_message,
+            ];
+        }
         $field_name = $data["fieldName"];
         $form_name = $data["formName"];
-        $map = $data["map"];
+        $map = $data["map"] ?? [];
+        $loaded_hash = (string)($data["configHash"] ?? "");
+        $overwrite = !empty($data["overwrite"]);
         $qualified_fields = $this->get_qualifying_fields($form_name);
         if (!array_key_exists($field_name, $qualified_fields)) {
-            throw new Exception("Invalid operation: Field '$field_name' is not on instrument '$form_name' or does not have the required action tag or properties.");
+            throw new Exception($this->tt_format("error_invalid_save_operation", $field_name, $form_name));
         }
         $field_data = $this->get_field_metadata($field_name);
-        $at = array_pop(ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG));
+        $at = ActionTagHelper::parseActionTags($field_data["misc"], self::ACTIONTAG);
+        $at = array_pop($at);
         $search = $at["match"];
-        $store = [
+        $current_params = trim($at["params"]);
+        if ($current_params == "") $current_params = "{}";
+        try {
+            $current_params = json_decode($current_params, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable $_) {
+            throw new Exception($this->tt_format("error_parse_actiontag", self::ACTIONTAG, $field_name));
+        }
+        $current_store = MapDataHelper::normalize($current_params);
+        $current_hash = $this->get_map_config_hash($current_store);
+        $store = MapDataHelper::normalize([
+            "version" => MapDataHelper::SCHEMA_VERSION,
             "shapes" => $map,
-            "bounds" => $data["bounds"],
-        ];
+            "bounds" => $data["bounds"] ?? [],
+            "styles" => $data["styles"] ?? [],
+        ]);
+        $new_hash = $this->get_map_config_hash($store);
+        if (hash_equals($current_hash, $new_hash)) {
+            return [
+                "status" => "unchanged",
+                "configHash" => $current_hash,
+                "message" => $this->tt("toast_no_changes"),
+            ];
+        }
+        if ($loaded_hash !== "" && !hash_equals($current_hash, $loaded_hash) && !$overwrite) {
+            return [
+                "status" => "conflict",
+                "configHash" => $current_hash,
+                "message" => $this->tt("dialog_save_conflict_message"),
+            ];
+        }
+        $this->validate_map_config($form_name, $store);
         $json = json_encode($store, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
         $replace = $at["actiontag"] . "=" . $json;
         $misc = trim(str_replace($search, $replace, $field_data["misc"]));
         $metadata_table = $this->get_project_metadata_table();
-        $field_name = db_escape($field_name);
         // Update field
         $sql = "UPDATE `$metadata_table` SET `misc` = ? WHERE `project_id` = ? AND `field_name` = ?";
         $q = db_query($sql, [$misc, $this->project_id, $field_name]);
         if (!$q) {
-            throw new Exception("Failed to update the database. Error: " . db_error());
+            throw new Exception($this->tt_format("error_db_update_failed", db_error()));
         }
-        return true;
+        \REDCap::logEvent(
+            "Design",
+            $this->tt_format("log_config_saved", $field_name, $form_name, count($store["shapes"]), count($store["styles"])),
+            $sql,
+            null,
+            null,
+            $this->project_id
+        );
+        return [
+            "status" => "saved",
+            "configHash" => $new_hash,
+        ];
+    }
+
+    private function validate_map_config($form_name, $store)
+    {
+        if (!is_array($store["bounds"] ?? null)) {
+            throw new Exception($this->tt("error_bounds_missing"));
+        }
+        if (!isset($store["bounds"]["width"]) || !isset($store["bounds"]["height"]) || $store["bounds"]["width"] <= 0 || $store["bounds"]["height"] <= 0) {
+            throw new Exception($this->tt("error_bounds_dimensions"));
+        }
+
+        $form_fields = $this->get_form_fields($form_name);
+        $styles = $store["styles"] ?? [];
+        if (!is_array($styles) || !array_key_exists(MapDataHelper::DEFAULT_STYLE_NAME, $styles)) {
+            throw new Exception($this->tt("error_default_style_missing"));
+        }
+        foreach (($store["shapes"] ?? []) as $idx => $shape) {
+            $display_idx = $idx + 1;
+            $shape_type = MapDataHelper::getShapeType($shape);
+            if ($shape_type == "") {
+                throw new Exception($this->tt_format("error_area_no_shape", $display_idx));
+            }
+            if (!in_array(($shape["mode"] ?? "2-way"), MapDataHelper::MODES, true)) {
+                throw new Exception($this->tt_format("error_area_invalid_mode", $display_idx));
+            }
+            $style_name = MapDataHelper::normalizeStyleName($shape["style"] ?? MapDataHelper::DEFAULT_STYLE_NAME);
+            if ($style_name === "" || !array_key_exists($style_name, $styles)) {
+                throw new Exception($this->tt_format("error_area_unknown_style", $display_idx));
+            }
+            $target = $shape["target"] ?? "";
+            if ($target == "") {
+                continue;
+            }
+            if (strpos($target, ":") === false) {
+                throw new Exception($this->tt_format("error_area_invalid_target", $display_idx));
+            }
+            list($target_field, $code) = explode(":", $target, 2);
+            if (!in_array($target_field, $form_fields, true)) {
+                throw new Exception($this->tt_format("error_area_target_not_on_instrument", $display_idx, $target_field));
+            }
+            $target_field_info = $this->get_field_metadata($target_field);
+            $target_type = $target_field_info["element_type"];
+            if (!in_array($target_type, ["checkbox", "radio", "select", "yesno", "truefalse"], true)) {
+                throw new Exception($this->tt_format("error_area_target_unsupported", $display_idx, $target_field));
+            }
+            $target_enum = parseEnum($target_field_info["element_enum"]);
+            if ($target_type == "checkbox" && $code == "") {
+                throw new Exception($this->tt_format("error_area_checkbox_missing_code", $display_idx, $target_field));
+            }
+            if ($code != "" && !array_key_exists($code, $target_enum)) {
+                throw new Exception($this->tt_format("error_area_unknown_choice_code", $display_idx, $target_field, $code));
+            }
+        }
     }
 
     private function get_project_forms()
@@ -541,7 +830,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $this->require_proj();
         $forms = $this->get_project_forms();
         if (!isset($forms[$form_name])) {
-            throw new Exception("Form '$form_name' does not exist!");
+            throw new Exception($this->tt_format("error_form_missing", $form_name));
         }
         return array_keys($forms[$form_name]["fields"]);
     }
@@ -557,7 +846,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $this->require_proj();
         $meta = $this->get_project_metadata();
         if (!array_key_exists($field_name, $meta)) {
-            throw new Exception("Field '$field_name' does not exist!");
+            throw new Exception($this->tt_format("error_field_missing", $field_name));
         }
         return $meta[$field_name];
     }
@@ -566,6 +855,20 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     {
         $this->require_proj();
         return $this->is_draft_preview() ? "redcap_metadata_temp" : "redcap_metadata";
+    }
+
+    private function get_designer_save_block_message()
+    {
+        $this->require_proj();
+        if (intval($this->proj->project["status"] ?? 0) > 0 && intval($this->proj->project["draft_mode"] ?? 0) <= 0) {
+            return $this->tt("error_prod_without_draft");
+        }
+        return "";
+    }
+
+    private function get_map_config_hash($store)
+    {
+        return hash("sha256", json_encode($store, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     }
 
     private function is_draft_preview()
@@ -592,7 +895,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function require_proj()
     {
         if ($this->proj == null) {
-            throw new Exception("Project not initialized");
+            throw new Exception($this->tt("error_project_not_initialized"));
         }
     }
 

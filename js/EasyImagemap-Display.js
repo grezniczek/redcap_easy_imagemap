@@ -1,6 +1,5 @@
 // Easy Imagemap EM
-// Dr. Günther Rezniczek, Ruhr-Universität Bochum, Marien Hospital Herne
-// @ts-check
+// Dr. Günther Rezniczek, Klinikum der Ruhr-Universität Bochum, Marien Hospital Herne
 ;(function() {
 
 //#region Init global object and define local variables
@@ -54,7 +53,7 @@ function initialize(config_data, jsmo) {
                 setupAddMap(mapField, config.maps[mapField], retryCount);
             }
             catch(ex) {
-                error('Failed to setup map for field \'' + mapField + '\'.', ex);
+                error(tt('display_failed_setup_map', 'Failed to setup map for field {field}.', { field: mapField }), ex);
             }
         }
         const endTime = performance.now();
@@ -83,7 +82,7 @@ function initialize(config_data, jsmo) {
         EIM_saveLocking = window['saveLocking'];
         window['saveLocking'] = function(lock_action, esign_action) { 
             EIM_saveLocking(lock_action, esign_action);
-            if (lock_action = '0') {
+            if (lock_action == '0') {
                 setTimeout(function() {
                     for (const mapField in config.maps) {
                         addInteractivity(mapField);
@@ -126,7 +125,8 @@ function setupAddMap(field, map, retry) {
  */
 function addMap(field, map, $img) {
     // Build <svg> to overlay on the image - we need to wrap the image first
-    const $wrapper = $img.wrap('<div class="eim-wrapper""></div>').parent();
+    const $wrapper = $img.parent().hasClass('eim-wrapper') ? $img.parent() : $img.wrap('<div class="eim-wrapper"></div>').parent();
+    $wrapper.find('svg[data-imagemap-id="eim-' + map.hash + '"]').remove();
     const svg = createSVG('svg', {
         width: map.bounds.width,
         height: map.bounds.height,
@@ -144,37 +144,142 @@ function addMap(field, map, $img) {
         const area = map.areas[areaIdx];
         area.id = id;
         const targetType = config.targets[area.target];
-        let shape = null;
-        if (area.poly) {
-            shape = createSVG('polygon', { 
-                points: area.poly,
-                id: id
-            });
-        }
-        // TODO: other shape types
+        let shape = createAreaShape(id, area);
         if (shape == null) {
             // No shape - remove
             map.areas.splice(areaIdx, 1);
         }
         else {
-            styles.push(
-                '#' + id + ' {stroke-width:1;stroke:orange;fill:orange;opacity:0.05;cursor:pointer;}\n' + 
-                '#' + id + ':hover {opacity:0.2;}\n' + 
-                '#' + id + '.selected {opacity:0.4;}\n'
-            );
+            styles.push(createAreaStyle(id, resolveAreaStyle(area.style, map.styles)));
             svg.append(shape);
             if (checkTargetValue(targetType, area.target, area.code)) {
                 shape.classList.add('selected');
             }
         }
     }
-    $('body').append('<style>' + styles.join('') + '</style>')
+    $('style[data-eim-style="' + map.hash + '"]').remove();
+    $('body').append('<style data-eim-style="' + map.hash + '">' + styles.join('') + '</style>')
     // Hide the SVG to prevent the overlay from showing while the image is already gone 
     $(window).on('beforeunload', function() {
         svg.remove();
     });
     addInteractivity(field);
     svg.style.display = 'block';
+}
+
+/**
+ * Creates the SVG element for a configured area.
+ * @param {string} id
+ * @param {Object} area
+ * @returns {SVGElement|null}
+ */
+function createAreaShape(id, area) {
+    const attrs = {
+        id: id,
+        'data-target': area.target,
+        'data-code': area.code,
+        'data-shape': ''
+    };
+    if (area.poly) {
+        attrs['points'] = area.poly;
+        attrs['data-shape'] = 'poly';
+        return createSVG('polygon', attrs);
+    }
+    if (area.rect) {
+        attrs['x'] = cleanNumber(area.rect.x);
+        attrs['y'] = cleanNumber(area.rect.y);
+        attrs['width'] = cleanNumber(area.rect.width);
+        attrs['height'] = cleanNumber(area.rect.height);
+        attrs['data-shape'] = 'rect';
+        setRotation(attrs, area.rect);
+        return createSVG('rect', attrs);
+    }
+    if (area.circle) {
+        attrs['cx'] = cleanNumber(area.circle.cx);
+        attrs['cy'] = cleanNumber(area.circle.cy);
+        attrs['r'] = cleanNumber(area.circle.r);
+        attrs['data-shape'] = 'circle';
+        return createSVG('circle', attrs);
+    }
+    if (area.ell) {
+        attrs['cx'] = cleanNumber(area.ell.cx);
+        attrs['cy'] = cleanNumber(area.ell.cy);
+        attrs['rx'] = cleanNumber(area.ell.rx);
+        attrs['ry'] = cleanNumber(area.ell.ry);
+        attrs['data-shape'] = 'ell';
+        setRotation(attrs, area.ell);
+        return createSVG('ellipse', attrs);
+    }
+    return null;
+}
+
+function setRotation(attrs, data) {
+    const angle = cleanNumber(data.angle);
+    if (!angle) return;
+    const cx = data.cx ?? (cleanNumber(data.x) + cleanNumber(data.width) / 2);
+    const cy = data.cy ?? (cleanNumber(data.y) + cleanNumber(data.height) / 2);
+    attrs['transform'] = 'rotate(' + angle + ' ' + cleanNumber(cx) + ' ' + cleanNumber(cy) + ')';
+}
+
+/**
+ * Builds scoped CSS for area regular, hover, and selected states.
+ * @param {string} id
+ * @param {Object} style
+ * @returns {string}
+ */
+function createAreaStyle(id, style) {
+    const regular = styleState(style, 'regular', {
+        stroke: '#ffa500',
+        fill: '#ffa500',
+        fillOpacity: 0.05,
+        strokeOpacity: 1,
+        strokeWidth: 1,
+    });
+    const hover = styleState(style, 'hover', {
+        stroke: regular.stroke,
+        fill: regular.fill,
+        fillOpacity: 0.2,
+        strokeOpacity: regular.strokeOpacity,
+        strokeWidth: regular.strokeWidth,
+    });
+    const selected = styleState(style, 'selected', {
+        stroke: regular.stroke,
+        fill: regular.fill,
+        fillOpacity: 0.4,
+        strokeOpacity: regular.strokeOpacity,
+        strokeWidth: regular.strokeWidth,
+    });
+    return '#' + id + ' {' + cssFromStyle(regular) + 'cursor:pointer;touch-action:manipulation;}\n' +
+        '#' + id + ':hover {' + cssFromStyle(hover) + '}\n' +
+        '#' + id + '.selected {' + cssFromStyle(selected) + '}\n';
+}
+
+function resolveAreaStyle(style, styles) {
+    if (typeof style == 'string') {
+        return styles && styles[style] ? styles[style] : {};
+    }
+    return style && typeof style == 'object' ? style : {};
+}
+
+function styleState(style, state, defaults) {
+    const source = style && typeof style[state] == 'object' ? style[state] : {};
+    return {
+        stroke: cleanColor(source.stroke, defaults.stroke),
+        fill: cleanColor(source.fill, defaults.fill),
+        fillOpacity: cleanOpacity(source.fillOpacity, defaults.fillOpacity),
+        strokeOpacity: cleanOpacity(source.strokeOpacity, defaults.strokeOpacity),
+        strokeWidth: cleanNumber(source.strokeWidth, defaults.strokeWidth),
+    };
+}
+
+function cssFromStyle(style) {
+    return [
+        'stroke:' + style.stroke,
+        'fill:' + style.fill,
+        'fill-opacity:' + style.fillOpacity,
+        'stroke-opacity:' + style.strokeOpacity,
+        'stroke-width:' + style.strokeWidth,
+    ].join(';') + ';';
 }
 
 /**
@@ -229,7 +334,7 @@ function addInteractivity(field) {
         }
     }
     catch(ex) {
-        error('Failed to add interactive features for map field \'' + field + '\'.', ex);
+        error(tt('display_failed_add_interactivity', 'Failed to add interactive features for map field {field}.', { field: field }), ex);
     }
 }
 
@@ -252,7 +357,7 @@ function setupInteractivity(field, id, type, target, code, mode) {
     if (mode != 'from-target') {
         shape.addEventListener('pointerdown', function(e) { setTargetValue(field, id, type, target, code); });
     }
-    if (mode == '2-way') {
+    if (mode == '2-way' || mode == 'from-target') {
         setupTwoWayBinding(field, id, type, target, code);
         if (EIM_radioResetVal == null) {
             // Hijack radioResetVal
@@ -267,6 +372,47 @@ function setupInteractivity(field, id, type, target, code, mode) {
     }
 }
 
+function escapeSelector(value) {
+    const stringValue = (value ?? '').toString();
+    return typeof $.escapeSelector == 'function' ? $.escapeSelector(stringValue) : stringValue.replace(/([ !"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, '\\$1');
+}
+
+function attrEquals(name, value) {
+    return '[' + name + '="' + escapeSelector(value) + '"]';
+}
+
+function elementById(id) {
+    return $('#' + escapeSelector(id));
+}
+
+function elementsByName(tag, name) {
+    return $(tag + '[name=' + escapeSelector(name) + ']');
+}
+
+function checkboxInput(target, code) {
+    return elementsByName('input', '__chk__' + target + '_RC_' + code);
+}
+
+function checkboxControl(target, code) {
+    return elementById('id-__chk__' + target + '_RC_' + code);
+}
+
+function radioInput(target, code) {
+    return elementById('opt-' + target + '_' + code);
+}
+
+function radioGroup(target) {
+    return elementsByName('input', target + '___radio');
+}
+
+function selectInput(target) {
+    return elementsByName('select', target);
+}
+
+function autocompleteInput(target) {
+    return elementById('rc-ac-input_' + target);
+}
+
 /**
  * Checks the value associated with an imagemap area
  * @param {string} type 
@@ -278,7 +424,7 @@ function checkTargetValue(type, target, code) {
     let val = '';
     switch (type) {
         case 'checkbox': {
-            val = ($('input[name="__chk__' + target + '_RC_' + code + '"]').val() ?? '').toString();
+            val = (checkboxInput(target, code).val() ?? '').toString();
         }
         break;
         case 'yesno':
@@ -288,7 +434,7 @@ function checkTargetValue(type, target, code) {
         }
         break;
         case 'select': {
-            val = ($('select[name="' + target + '"]').val() ?? '').toString();
+            val = (selectInput(target).val() ?? '').toString();
         }
         break;
     }
@@ -309,19 +455,19 @@ function checkTargetValue(type, target, code) {
 function checkTargetDisabled(type, target, code) {
     switch (type) {
         case 'checkbox': {
-            return $('input[name="__chk__' + target + '_RC_' + code + '"]').prop('disabled');
+            return checkboxInput(target, code).prop('disabled');
         }
         case 'yesno':
         case 'truefalse':
         case 'radio': {
             if (code == '') {
                 // Special handling of reset link - check any option instead
-                return  $('input[id*="opt-' + target + '_"]').prop('disabled');
+                return radioGroup(target).prop('disabled');
             }
-            return $('#opt-' + target + '_' + code).prop('disabled');
+            return radioInput(target, code).prop('disabled');
         }
         case 'select': {
-            return $('select[name="' + target + '"]').prop('disabled');
+            return selectInput(target).prop('disabled');
         }
     }
     return true;
@@ -340,7 +486,7 @@ function checkTargetDisabled(type, target, code) {
 function setTargetValue(field, id, type, target, code) {
     switch (type) {
         case 'checkbox': {
-            $('#id-__chk__' + target + '_RC_' + code).trigger('click');
+            checkboxControl(target, code).trigger('click');
             updateAreaClass(field, id, type, target, code);
         }
         break;
@@ -353,17 +499,18 @@ function setTargetValue(field, id, type, target, code) {
                 document.forms['form'][target].value = '';
             }
             else {
-                $('#opt-' + target + '_' + code).trigger('click');
+                radioInput(target, code).trigger('click');
             }
             updateAreaClass(field, id, type, target, code);
         }
         break;
         case 'select': {
-            const $select = $('select[name="' + target + '"]');
+            const $select = selectInput(target);
             $select.val(code);
             // In case this is an autocomplete dropdown, set the value of the text input
-            const text = $select.find('option[value="' + code + '"]').text();
-            $('#rc-ac-input_' + target).val(text);
+            const text = $select.find('option' + attrEquals('value', code)).text();
+            autocompleteInput(target).val(text);
+            $select.trigger('change');
             updateAreaClass(field, id, type, target, code);
         }
         break;
@@ -385,7 +532,7 @@ function setTargetValue(field, id, type, target, code) {
 function setupTwoWayBinding(field, id, targetType, target, code) {
     switch (targetType) {
         case 'checkbox': {
-            const $el = $('input[name="__chk__' + target + '_RC_' + code + '"]')
+            const $el = checkboxInput(target, code)
             $el.on('change', function() {
                 updateAreaClass(field, id, targetType, target, code);
             });
@@ -396,7 +543,7 @@ function setupTwoWayBinding(field, id, targetType, target, code) {
         case 'truefalse':
         case 'radio': {
             if (code != '') {
-                const $el = $('input[type="radio"][name="' + target + '___radio"]');
+                const $el = radioGroup(target).filter('[type=radio]');
                 $el.on('change', function() {
                     updateAreaClass(field, id, targetType, target, code);
                 });
@@ -412,17 +559,17 @@ function setupTwoWayBinding(field, id, targetType, target, code) {
         }
         break;
         case 'select': {
-            const $el = $('select[name="' + target + '"]');
+            const $el = selectInput(target);
             const bound = $el.attr('data-two-way-bound') ?? '';
             // Already bound?
             if (!bound.includes(':' + field)) {
                 // Note that binding has been established
                 $el.attr('data-two-way-bound', bound + ':' + field);
                 $el.on('change', function() {
-                    const $svg = $('svg[data-field="' + field + '"]');
+                    const $svg = $('svg' + attrEquals('data-field', field));
                     const this_target = ($el.attr('name') ?? '').toString();
                     const this_code = ($el.val() ?? '').toString();
-                    const this_id = $svg.find('polygon[data-target="' + this_target + '"][data-code="' + this_code + '"]').attr('id') ?? ''
+                    const this_id = $svg.find(attrEquals('data-target', this_target) + attrEquals('data-code', this_code)).attr('id') ?? ''
                     updateAreaClass(field, this_id, targetType, this_target, this_code);
                 });
             }
@@ -483,6 +630,23 @@ function createSVG(tag, attrs) {
     return el;
 }
 
+function cleanColor(value, fallback) {
+    const color = (value ?? '').toString();
+    return /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
+}
+
+function cleanOpacity(value, fallback) {
+    const number = Number.parseFloat(value);
+    if (Number.isNaN(number)) return fallback;
+    return Math.max(0, Math.min(1, number));
+}
+
+function cleanNumber(value, fallback = 0) {
+    const number = Number.parseFloat(value);
+    if (Number.isNaN(number)) return fallback;
+    return Math.round(number * 100) / 100;
+}
+
 /**
  * Generates a UUID
  * @returns {string}
@@ -506,6 +670,14 @@ function generateUUID() {
 //#endregion
 
 //#region Debug Logging
+
+function tt(key, fallback, replacements = {}) {
+    let text = (config.lang && config.lang[key]) ? config.lang[key] : fallback;
+    Object.keys(replacements).forEach(name => {
+        text = text.replace(new RegExp('\\{' + name + '\\}', 'g'), replacements[name]);
+    });
+    return text;
+}
 
 /**
  * Logs a message to the console when in debug mode

@@ -149,7 +149,7 @@ class ActionTagHelper
             $results[] = array(
                 'actiontag' => $tag,
                 'params' => $matches['params'][$i],
-                'match' => $matches[0],
+                'match' => $matches[0][$i],
             );
         }
         return $results;

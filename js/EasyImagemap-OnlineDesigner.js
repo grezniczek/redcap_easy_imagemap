@@ -1,13 +1,10 @@
 // Easy Imagemap EM
-// Dr. Günther Rezniczek, Ruhr-Universität Bochum, Marien Hospital Herne
-// @ts-check
+// Dr. Günther Rezniczek, Klinikum der Ruhr-Universität Bochum, Marien Hospital Herne
 ;(function() {
 
-// @ts-ignore
 const EIM = window.DE_RUB_EasyImagemap ?? {
     init: initialize
 };
-// @ts-ignore
 window.DE_RUB_EasyImagemap = EIM;
 
 let config = {};
@@ -19,18 +16,52 @@ let $selectTemplate = $();
 let showingEditor = false;
 let JSMO = {};
 let editorData = null;
+let editorSavedState = '';
+let suppressBeforeUnload = false;
+let pendingUnsavedAction = null;
+let pendingSaveCloseOnSuccess = false;
+let $targetPickerMenu = $();
 
 /** @type {string} The current area */
 let currentAreaId = ''
 
 let currentAnchor = null;
+let lastVertexAnchor = null;
+let hoverAreaId = '';
 
 let editShape = null;
 let assignableLabels = {};
 let _shapeType = 'poly';
 let dndInitialized = false;
+let currentStyleState = 'regular';
+let styleClipboard = null;
+let pendingShapeChangeType = '';
+let pendingStyleDeleteName = '';
+let ctrlKeyDown = false;
+let spaceKeyDown = false;
+let panningCanvas = false;
+let panPointerId = null;
 
 const moveStartPos = { x: 0, y: 0 };
+const moveDelta = { x: 0, y: 0 };
+const moveGuideCenter = { x: 0, y: 0 };
+const editDragGuideCenter = { x: 0, y: 0 };
+const panStart = { x: 0, y: 0, scrollLeft: 0, scrollTop: 0 };
+const SHAPE_TYPES = ['circle', 'ell', 'rect', 'poly'];
+const UPDATE_MODES = ['2-way', 'to-target', 'from-target'];
+const SHAPE_CHANGE_CONFIRM_KEY = 'DE_RUB_EasyImagemap.skipShapeChangeConfirm';
+const DEFAULT_STYLE_NAME = 'default';
+const RADIAL_GRID_ANGLES = [0, 45, 90, 135];
+const RADIAL_GRID_STEP = 45;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.05;
+
+const STYLE_DEFAULTS = {
+    regular: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.05, strokeOpacity: 1, strokeWidth: 1 },
+    hover: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.2, strokeOpacity: 1, strokeWidth: 1 },
+    selected: { fill: '#ffa500', stroke: '#ffa500', fillOpacity: 0.4, strokeOpacity: 1, strokeWidth: 1 },
+};
 
 function initialize(config_data, jsmo_obj) {
     config = config_data;
@@ -56,7 +87,21 @@ function initialize(config_data, jsmo_obj) {
         // Setup editor and events
         $editor = $('.modal.eim-editor');
         $editor.on('click', handleEditorActionEvent);
+        $editor.on('input change', '[data-action="style-change"]', handleEditorActionEvent);
+        $editor.on('input change', '[data-action="zoom-slider"]', handleEditorActionEvent);
+        $editor.on('change', '[data-action="style-select"]', handleEditorActionEvent);
+        $editor.on('changed.bs.select change', 'select.assignables', function(e) {
+            executeEditorAction('assign-target', $(e.target).parents('tr[data-area-id]'), e);
+        });
         $editor.on('keydown', handleKeyEvent);
+        $(window).off('beforeunload.easyimagemap').on('beforeunload.easyimagemap', handleBeforeUnload);
+        $(window).off('keydown.easyimagemap').on('keydown.easyimagemap', handleWindowKeyEvent);
+        $(window).off('keyup.easyimagemap').on('keyup.easyimagemap', handleWindowKeyEvent);
+        $(window).off('blur.easyimagemap').on('blur.easyimagemap', function() {
+            ctrlKeyDown = false;
+            setSpacePanKey(false);
+            updateEditRadialGuide(false);
+        });
 
         // Add buttons
         addOnlineDesignerButtons();
@@ -70,7 +115,11 @@ function addOnlineDesignerButtons() {
     for (let fieldName of Object.keys(config.fields)) {
         log('Adding button for field ' + fieldName);
 
-        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"><button class="btn btn-defaultrc btn-xs"><i class="fa-solid fa-draw-polygon eim-icon me-1"></i> Configure Imagemap</button></div>');
+        const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"></div>');
+        $('<button class="btn btn-defaultrc btn-xs"></button>')
+            .append('<i class="fa-solid fa-draw-polygon eim-icon me-1"></i>')
+            .append(document.createTextNode(' ' + tt('button_configure_imagemap', 'Configure Imagemap')))
+            .appendTo($btn);
         $btn.on('click', function(e) {
             e.preventDefault();
             $btn.prop('disabled', true);
@@ -83,7 +132,7 @@ function addOnlineDesignerButtons() {
                     }
                     editImageMap();
                 }).catch(function(err) {
-                    showToast(err, true);
+                    showToast(err, 'error');
                 }).finally(function() {
                     $btn.prop('disabled', false);
                     showingEditor = false;
@@ -173,6 +222,7 @@ function updateFields() {
 
 
 function editImageMap() {
+    cleanupAssignableSelectpickerContainers();
     currentAreaId = '';
     currentAnchor = null;
     $editor.find('.field-name').text(editorData.fieldName);
@@ -181,16 +231,25 @@ function editImageMap() {
     const w = $img.width();
     const h = $img.height();
     // Build the assignable box
-    $selectTemplate = $('<select><option value="" data-content="(not assigned)"></option></select>');
+    assignableLabels = {};
+    const notAssigned = tt('option_not_assigned', '(not assigned)');
+    $selectTemplate = $('<select></select>');
+    $('<option></option>').val('').attr('data-content', notAssigned).text(notAssigned).appendTo($selectTemplate);
     for (let assignable of editorData.assignables) {
         for (let option of assignable.options) {
-            const label = `<span class="badge badge-dark">${assignable.icon} ${assignable.name}</span> &ndash; ${option.label}`;
-            assignableLabels[option.code] = label;
-            $selectTemplate.append(`<option value='${option.code}' data-content='${label}'>[${assignable.name}] ${option.label}</option>`);
+            const content = assignableOptionContent(assignable, option);
+            assignableLabels[option.code] = content;
+            $('<option></option>')
+                .val(option.code)
+                .attr('data-content', content)
+                .attr('data-eim-target-field', assignable.name)
+                .attr('data-eim-target-label', option.label)
+                .text('[' + assignable.name + '] ' + option.label)
+                .appendTo($selectTemplate);
         }
     }
     // Build SVG to overlay on image
-    $svg = $(`<svg tabindex="0" class="eim-svg" style="height="${h}px" width="${w}px" viewBox="0 0 ${w} ${h}"></svg>`);
+    $svg = $(`<svg tabindex="0" class="eim-svg" style="height:${h}px;width:${w}px;" viewBox="0 0 ${w} ${h}"></svg>`);
     // Add image and SVG
     $container.append($img).append($svg);
     
@@ -203,9 +262,17 @@ function editImageMap() {
     svg.addEventListener('pointerup', handleSVGEvent);
     svg.addEventListener('pointerdown', handleSVGEvent);
     svg.addEventListener('pointermove', handleSVGEvent);
+    svg.addEventListener('pointercancel', handleSVGEvent);
+    $container.off('wheel.easyimagemap').on('wheel.easyimagemap', handleCanvasWheel);
+    updateZoomControls();
     setMode('edit');
+    setShapeType('poly');
+    setStyleState('regular');
     editorData.anchors = new Array();
+    editorData.selection = new Array();
+    editorData.styles = normalizeStyles(editorData.styles ?? {});
     editorData.areas = areasFromMap(editorData.map);
+    updateStyleSelector();
 
     // Add the rows
     for (let id of Object.keys(editorData.areas)) {
@@ -217,6 +284,7 @@ function editImageMap() {
     setupTableDnD();
     // Set two-way checkbox
     $editor.find('input[name=two-way]').prop('checked', editorData['two-way']);
+    markEditorStateSaved();
     // Some logging
     log('Invoking editor for ' + editorData.fieldName, editorData);
     // Hide REDCap's move to top button
@@ -228,56 +296,51 @@ function editImageMap() {
     $editor.modal('show', { backdrop: 'static' });
 }
 
-function applyEditMode(setToMode) {
-    const prevEditMode = editorData.mode;
-    const editModes = ['edit','move'];
-    if (!editModes.includes(setToMode.replace('mode-',''))) {
-        error('Invalid edit mode ' + setToMode);
+function assignableOptionContent(assignable, option, isUsed = false) {
+    const $badge = $('<span></span>').addClass('badge fs8').addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-secondary');
+    $badge.append($(assignable.icon));
+    $badge.append(document.createTextNode(' ' + assignable.name));
+    const $label = $('<span></span>').addClass('eim-target-option-label fs10').text(option.label);
+    const $content = $('<span></span>')
+        .addClass('eim-target-option')
+        .addClass(targetCodeClass(option.code ?? ''))
+        .attr('data-eim-target-code', option.code ?? '');
+    $content.append($badge);
+    $content.append($('<br>'));
+    $content.append($label);
+    if (isUsed) {
+        $('<span></span>')
+            .addClass('badge badge-light eim-target-used-marker')
+            .attr('title', tt('tooltip_target_already_assigned', 'Already assigned to another shape'))
+            .append($('<i></i>').addClass('fa-solid fa-check'))
+            .append(document.createTextNode(' ' + tt('target_used_marker', 'used')))
+            .appendTo($content);
     }
-    editorData.mode = setToMode.replace('mode-','');
-    editModes.forEach((mode) => {
-        const btn = document.querySelector('button[data-action="mode-' + mode + '"]');
-        if (btn) {
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-outline-secondary');
-            if (mode == editorData.mode) {
-                btn.classList.remove('btn-outline-secondary');
-                btn.classList.add('btn-secondary');
-            }
-            // @ts-ignore
-            btn.blur();
-        }
-    });
-    if (prevEditMode != editorData.mode && currentAreaId != '') {
-        updateCurrentArea();
-    }
+    return $content.prop('outerHTML');
 }
-
-function updateCurrentArea() {
-    log('Todo: Update area', currentAreaId);
-}
-
 
 //#region Zoom
 
-function applyZoom(setToZoom) {
-    ['zoom1x','zoom2x','zoom3x','zoom4x'].forEach((zoom) => {
-        const btn = document.querySelector('button[data-action="' + zoom + '"]');
-        if (btn) {
-            btn.classList.remove('btn-secondary');
-            btn.classList.add('btn-outline-secondary');
-            if (zoom == setToZoom) {
-                btn.classList.remove('btn-outline-secondary');
-                btn.classList.add('btn-secondary');
-                zoomTo(Number.parseInt(zoom.substring(4,5)));
-            }
-            // @ts-ignore
-            btn.blur();
-        }
-    });
+function setZoom(f, options = {}) {
+    f = normalizeZoom(f);
+    if (!editorData || !f) return;
+    if (Math.abs(f - editorData.zoom) < 0.0001) {
+        updateZoomControls();
+        return;
+    }
+    const preserve = options.clientX != null && options.clientY != null ? zoomPreservePoint(options.clientX, options.clientY) : null;
+    zoomTo(f, { scrollCanvas: options.scrollCanvas === true && !preserve });
+    updateZoomControls();
+    if (preserve) restoreZoomPreservePoint(preserve);
 }
 
-function zoomTo(f) {
+function normalizeZoom(value) {
+    const zoom = Number.parseFloat(value);
+    if (!Number.isFinite(zoom)) return 1;
+    return clamp(Math.round(zoom / ZOOM_STEP) * ZOOM_STEP, ZOOM_MIN, ZOOM_MAX);
+}
+
+function zoomTo(f, options = {}) {
     log('Setting zoom level to: ' + f);
     editorData.zoom = f;
     const zW = editorData.bounds.width * f;
@@ -291,8 +354,68 @@ function zoomTo(f) {
     const current = currentAreaId;
     setCurrentEditArea('');
     if (current) {
-        setCurrentEditArea(current);
+        setCurrentEditArea(current, options.scrollCanvas === true);
     }
+}
+
+function updateZoomControls() {
+    const zoom = normalizeZoom(editorData ? editorData.zoom : 1);
+    const percent = Math.round(zoom * 100);
+    $editor.find('[data-action="zoom-slider"]').val(percent);
+    $editor.find('[data-zoom-readout]').text(percent + '%');
+    $editor.find('[data-action="zoom-decrease"]').prop('disabled', zoom <= ZOOM_MIN + 0.0001);
+    $editor.find('[data-action="zoom-reset"]').prop('disabled', Math.abs(zoom - 1) < 0.0001);
+    $editor.find('[data-action="zoom-increase"]').prop('disabled', zoom >= ZOOM_MAX - 0.0001);
+}
+
+function handleCanvasWheel(event) {
+    if (!editorData) return;
+    event.preventDefault();
+    const originalEvent = event.originalEvent ?? event;
+    const direction = originalEvent.deltaY < 0 ? 1 : -1;
+    if (direction == 0) return;
+    setZoom(editorData.zoom + direction * ZOOM_STEP, {
+        clientX: originalEvent.clientX,
+        clientY: originalEvent.clientY,
+    });
+}
+
+function zoomButtonStep(direction) {
+    const zoom = normalizeZoom(editorData ? editorData.zoom : 1);
+    if (direction < 0) return zoom < 1.1 ? 0.25 : 0.5;
+    return zoom < 1 ? 0.25 : 0.5;
+}
+
+function zoomPreservePoint(clientX, clientY) {
+    const container = $editor.find('#eim-container')[0];
+    if (!container || !svg) return null;
+    const rect = container.getBoundingClientRect();
+    const offset = svgCanvasOffset();
+    return {
+        container: container,
+        pointerX: clientX - rect.left,
+        pointerY: clientY - rect.top,
+        imageX: container.scrollLeft + clientX - rect.left - offset.left,
+        imageY: container.scrollTop + clientY - rect.top - offset.top,
+        oldZoom: editorData.zoom,
+        offset: offset,
+    };
+}
+
+function restoreZoomPreservePoint(preserve) {
+    if (!preserve || !preserve.container || !preserve.oldZoom) return;
+    const ratio = editorData.zoom / preserve.oldZoom;
+    const maxLeft = Math.max(0, preserve.container.scrollWidth - preserve.container.clientWidth);
+    const maxTop = Math.max(0, preserve.container.scrollHeight - preserve.container.clientHeight);
+    preserve.container.scrollLeft = clamp(preserve.imageX * ratio + preserve.offset.left - preserve.pointerX, 0, maxLeft);
+    preserve.container.scrollTop = clamp(preserve.imageY * ratio + preserve.offset.top - preserve.pointerY, 0, maxTop);
+}
+
+function svgCanvasOffset() {
+    return {
+        left: Number.parseFloat($svg.css('left')) || 0,
+        top: Number.parseFloat($svg.css('top')) || 0,
+    };
 }
 
 //#endregion
@@ -312,16 +435,20 @@ function areasFromMap(map) {
             type = 'poly';
         } else if (typeof item.rect != 'undefined') {
             type = 'rect';
+        } else if (typeof item.circle != 'undefined') {
+            type = 'circle';
         } else if (typeof item.ell != 'undefined') {
             type = 'ell';
         }
-        const mode = ['2-way', 'to-target', 'from-target'].includes(item.mode) ? item.mode : '2-way';
+        const mode = UPDATE_MODES.includes(item.mode) ? item.mode : '2-way';
         areas[generateUUID()] = {
             type: type,
             mode: mode,
             label: item.label ?? '',
+            tooltip: item.tooltip ?? '',
             target: item.target ?? '',
-            data: item[type] ?? '',
+            style: normalizeStyleReference(item.style ?? DEFAULT_STYLE_NAME),
+            data: normalizeShapeData(type, item[type] ?? null),
         };
     }
     return areas;
@@ -339,6 +466,8 @@ function areasToMap() {
             label: area.label,
             mode: area.mode,
             target: area.target,
+            tooltip: area.tooltip ?? '',
+            style: normalizeStyleReference(area.style ?? DEFAULT_STYLE_NAME),
         };
         item[area.type] = area.data;
         map.push(item);
@@ -347,12 +476,90 @@ function areasToMap() {
     return map;
 }
 
-//#endregion
-
-function getOptionLabel(id, code) {
-    // TODO
-    return '';
+function stylesToMap() {
+    return normalizeStyles(editorData.styles ?? {});
 }
+
+function buildMapPayload() {
+    return {
+        fieldName: editorData.fieldName,
+        formName: editorData.formName,
+        bounds: editorData.bounds,
+        configHash: editorData.configHash ?? '',
+        overwrite: false,
+        'two-way': $editor.find('input[name=two-way]').prop('checked'),
+        styles: stylesToMap(),
+        map: areasToMap(),
+    };
+}
+
+function buildChangeTrackingPayload() {
+    const payload = buildMapPayload();
+    delete payload.configHash;
+    delete payload.overwrite;
+    return payload;
+}
+
+function markEditorStateSaved() {
+    editorSavedState = editorData ? stableStringify(buildChangeTrackingPayload()) : '';
+}
+
+function hasUnsavedEditorChanges() {
+    return !!editorData && editorSavedState !== '' && stableStringify(buildChangeTrackingPayload()) !== editorSavedState;
+}
+
+function handleBeforeUnload(event) {
+    if (suppressBeforeUnload || !hasUnsavedEditorChanges()) return undefined;
+    const message = tt('beforeunload_unsaved_changes', 'You have unsaved Easy Imagemap changes. Leave this page and discard them?');
+    const originalEvent = event.originalEvent ?? event;
+    originalEvent.preventDefault();
+    originalEvent.returnValue = message;
+    return message;
+}
+
+function handleWindowKeyEvent(event) {
+    const key = (event.key ?? '').toString().toLowerCase();
+    ctrlKeyDown = event.type == 'keyup' && key == 'control' ? false : !!event.ctrlKey;
+    updateEditRadialGuide(ctrlKeyDown);
+    const isSpaceKey = key == ' ' || key == 'spacebar' || key == 'space';
+    if (isSpaceKey) {
+        const ignore = shouldIgnoreKeyboardEvent(event);
+        setSpacePanKey(event.type != 'keyup' && !ignore);
+        if (editorData && !ignore) {
+            event.preventDefault();
+            event.stopPropagation();
+            return false;
+        }
+    }
+    const isSaveShortcut = event.type == 'keydown' && !event.repeat && (event.ctrlKey || event.metaKey) && key == 's';
+    if (isSaveShortcut && editorData) {
+        event.preventDefault();
+        event.stopPropagation();
+        saveMap(false, false);
+        return false;
+    }
+    const isReloadShortcut = key == 'f5' || ((event.ctrlKey || event.metaKey) && key == 'r');
+    if (!isReloadShortcut || !hasUnsavedEditorChanges()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    requestDiscardChanges(() => {
+        suppressBeforeUnload = true;
+        window.location.reload();
+    });
+    return false;
+}
+
+function stableStringify(value) {
+    if (Array.isArray(value)) {
+        return '[' + value.map(stableStringify).join(',') + ']';
+    }
+    if (value && typeof value == 'object') {
+        return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';
+    }
+    return JSON.stringify(value);
+}
+
+//#endregion
 
 function createSVG(tag, attrs) {
     const el= document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -361,75 +568,806 @@ function createSVG(tag, attrs) {
     return el;
 }
 
-function getMousePosition(e) {
-    const CTM = svg.getScreenCTM();
+function createShapeElement(type, data, attrs = {}) {
+    const tag = type == 'rect' ? 'rect' : (type == 'circle' ? 'circle' : (type == 'ell' ? 'ellipse' : 'polygon'));
+    const el = createSVG(tag, attrs);
+    setShapeAttributes(el, type, data);
+    return el;
+}
+
+function setShapeAttributes(el, type, data) {
+    data = normalizeShapeData(type, data);
+    if (type == 'poly') {
+        el.setAttributeNS(null, 'points', data ?? '');
+    }
+    else if (type == 'rect') {
+        el.setAttributeNS(null, 'x', data.x);
+        el.setAttributeNS(null, 'y', data.y);
+        el.setAttributeNS(null, 'width', data.width);
+        el.setAttributeNS(null, 'height', data.height);
+        setShapeRotation(el, data);
+    }
+    else if (type == 'circle') {
+        el.setAttributeNS(null, 'cx', data.cx);
+        el.setAttributeNS(null, 'cy', data.cy);
+        el.setAttributeNS(null, 'r', data.r);
+        el.removeAttribute('transform');
+    }
+    else if (type == 'ell') {
+        el.setAttributeNS(null, 'cx', data.cx);
+        el.setAttributeNS(null, 'cy', data.cy);
+        el.setAttributeNS(null, 'rx', data.rx);
+        el.setAttributeNS(null, 'ry', data.ry);
+        setShapeRotation(el, data);
+    }
+}
+
+function setShapeRotation(el, data) {
+    const angle = cleanNumber(data.angle);
+    if (!angle) {
+        el.removeAttribute('transform');
+        return;
+    }
+    const center = getShapeCenter(data);
+    el.setAttributeNS(null, 'transform', `rotate(${angle} ${center.x} ${center.y})`);
+}
+
+function normalizeShapeData(type, data) {
+    if (type == 'poly') {
+        return typeof data == 'string' ? data.trim() : '';
+    }
+    if (type == 'rect') {
+        data = data && typeof data == 'object' ? data : {};
+        return {
+            x: cleanNumber(data.x),
+            y: cleanNumber(data.y),
+            width: Math.max(0, cleanNumber(data.width)),
+            height: Math.max(0, cleanNumber(data.height)),
+            angle: cleanNumber(data.angle),
+        };
+    }
+    if (type == 'circle') {
+        data = data && typeof data == 'object' ? data : {};
+        return {
+            cx: cleanNumber(data.cx),
+            cy: cleanNumber(data.cy),
+            r: Math.max(0, cleanNumber(data.r)),
+        };
+    }
+    if (type == 'ell') {
+        data = data && typeof data == 'object' ? data : {};
+        return {
+            cx: cleanNumber(data.cx),
+            cy: cleanNumber(data.cy),
+            rx: Math.max(0, cleanNumber(data.rx)),
+            ry: Math.max(0, cleanNumber(data.ry)),
+            angle: cleanNumber(data.angle),
+        };
+    }
+    return data;
+}
+
+function translateShapeData(type, data, dx, dy) {
+    data = normalizeShapeData(type, data);
+    if (type == 'poly') return applyTranslation(data, dx, dy);
+    if (type == 'rect') return { x: data.x + dx, y: data.y + dy, width: data.width, height: data.height, angle: data.angle };
+    if (type == 'circle') return { cx: data.cx + dx, cy: data.cy + dy, r: data.r };
+    if (type == 'ell') return { cx: data.cx + dx, cy: data.cy + dy, rx: data.rx, ry: data.ry, angle: data.angle };
+    return data;
+}
+
+function getShapeCenter(data) {
+    if (typeof data.cx != 'undefined' && typeof data.cy != 'undefined') {
+        return { x: cleanNumber(data.cx), y: cleanNumber(data.cy) };
+    }
     return {
+        x: cleanNumber(data.x) + cleanNumber(data.width) / 2,
+        y: cleanNumber(data.y) + cleanNumber(data.height) / 2,
+    };
+}
+
+function morphShapeData(fromType, data, toType) {
+    if (fromType == toType) return normalizeShapeData(toType, data);
+    if (toType == 'poly') return shapeToPolygon(fromType, data);
+    if (fromType == 'rect' && (toType == 'circle' || toType == 'ell')) {
+        const rect = normalizeShapeData('rect', data);
+        const center = getShapeCenter(rect);
+        if (toType == 'circle') {
+            return normalizeShapeData('circle', { cx: center.x, cy: center.y, r: Math.min(rect.width, rect.height) / 2 });
+        }
+        return normalizeShapeData('ell', { cx: center.x, cy: center.y, rx: rect.width / 2, ry: rect.height / 2, angle: rect.angle });
+    }
+    if (fromType == 'circle' && toType == 'ell') {
+        const circle = normalizeShapeData('circle', data);
+        return normalizeShapeData('ell', { cx: circle.cx, cy: circle.cy, rx: circle.r, ry: circle.r, angle: 0 });
+    }
+    if (fromType == 'ell' && toType == 'circle') {
+        const ell = normalizeShapeData('ell', data);
+        return normalizeShapeData('circle', { cx: ell.cx, cy: ell.cy, r: Math.max(ell.rx, ell.ry) });
+    }
+    const box = getOuterBox(fromType, data);
+    if (!box) return normalizeShapeData(toType, null);
+    if (toType == 'rect') return normalizeShapeData('rect', {
+        x: box.x,
+        y: box.y,
+        width: box.width,
+        height: box.height,
+        angle: box.angle,
+    });
+    if (toType == 'circle') {
+        return normalizeShapeData('circle', {
+            cx: box.cx,
+            cy: box.cy,
+            r: Math.sqrt(Math.pow(box.width / 2, 2) + Math.pow(box.height / 2, 2)),
+        });
+    }
+    if (toType == 'ell') return normalizeShapeData('ell', {
+        cx: box.cx,
+        cy: box.cy,
+        rx: box.width / 2,
+        ry: box.height / 2,
+        angle: box.angle,
+    });
+    return normalizeShapeData(toType, null);
+}
+
+function shapeToPolygon(fromType, data) {
+    data = normalizeShapeData(fromType, data);
+    if (fromType == 'poly') return data;
+    if (fromType == 'rect') {
+        if (!data.width || !data.height) return '';
+        return pointsToPoly(orientedRectPoints(getShapeCenter(data), data.width / 2, data.height / 2, data.angle));
+    }
+    if (fromType == 'circle') {
+        if (!data.r) return '';
+        return pointsToPoly(ellipsePoints({ x: data.cx, y: data.cy }, data.r, data.r, 0, 6));
+    }
+    if (fromType == 'ell') {
+        if (!data.rx || !data.ry) return '';
+        return pointsToPoly(ellipsePoints({ x: data.cx, y: data.cy }, data.rx, data.ry, data.angle, 6));
+    }
+    return '';
+}
+
+function getOuterBox(type, data) {
+    data = normalizeShapeData(type, data);
+    if (type == 'rect' && data.width > 0 && data.height > 0) {
+        const c = getShapeCenter(data);
+        return { x: data.x, y: data.y, width: data.width, height: data.height, cx: c.x, cy: c.y, angle: data.angle };
+    }
+    if (type == 'circle' && data.r > 0) {
+        return { x: data.cx - data.r, y: data.cy - data.r, width: data.r * 2, height: data.r * 2, cx: data.cx, cy: data.cy, angle: 0 };
+    }
+    if (type == 'ell' && data.rx > 0 && data.ry > 0) {
+        return { x: data.cx - data.rx, y: data.cy - data.ry, width: data.rx * 2, height: data.ry * 2, cx: data.cx, cy: data.cy, angle: data.angle };
+    }
+    if (type == 'poly' && data) {
+        return pointsOuterBox(polyToPoints(data));
+    }
+    return null;
+}
+
+function polyToPoints(poly) {
+    if (!poly) return [];
+    return poly.split(/\s+/).map(pair => {
+        const parts = pair.split(',');
+        const x = Number.parseFloat(parts[0]);
+        const y = Number.parseFloat(parts[1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+        return { x: cleanNumber(x), y: cleanNumber(y) };
+    }).filter(isFinitePoint);
+}
+
+function isFinitePoint(point) {
+    return !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function pointsOuterBox(points) {
+    if (!points.length) return null;
+    const xs = points.map(point => point.x);
+    const ys = points.map(point => point.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    return {
+        x: minX,
+        y: minY,
+        width: width,
+        height: height,
+        cx: minX + width / 2,
+        cy: minY + height / 2,
+        angle: 0,
+    };
+}
+
+function polygonCenterOfMass(points) {
+    if (!points.length) return { x: 0, y: 0 };
+    if (points.length < 3) return averagePoint(points);
+    let twiceArea = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < points.length; i++) {
+        const current = points[i];
+        const next = points[(i + 1) % points.length];
+        const cross = current.x * next.y - next.x * current.y;
+        twiceArea += cross;
+        cx += (current.x + next.x) * cross;
+        cy += (current.y + next.y) * cross;
+    }
+    if (Math.abs(twiceArea) < 0.0001) return averagePoint(points);
+    return {
+        x: cleanNumber(cx / (3 * twiceArea)),
+        y: cleanNumber(cy / (3 * twiceArea)),
+    };
+}
+
+function averagePoint(points) {
+    const sum = points.reduce((acc, point) => ({ x: acc.x + point.x, y: acc.y + point.y }), { x: 0, y: 0 });
+    return {
+        x: cleanNumber(sum.x / points.length),
+        y: cleanNumber(sum.y / points.length),
+    };
+}
+
+function orientedRectPoints(center, halfWidth, halfHeight, angle) {
+    const ux = pointUnit(angle);
+    const uy = pointUnit(angle + 90);
+    return [
+        addVectors(center, scaleVector(ux, -halfWidth), scaleVector(uy, -halfHeight)),
+        addVectors(center, scaleVector(ux, halfWidth), scaleVector(uy, -halfHeight)),
+        addVectors(center, scaleVector(ux, halfWidth), scaleVector(uy, halfHeight)),
+        addVectors(center, scaleVector(ux, -halfWidth), scaleVector(uy, halfHeight)),
+    ];
+}
+
+function ellipsePoints(center, rx, ry, angle, count) {
+    const ux = pointUnit(angle);
+    const uy = pointUnit(angle + 90);
+    const points = [];
+    for (let i = 0; i < count; i++) {
+        const theta = 2 * Math.PI * i / count;
+        points.push(addVectors(
+            center,
+            scaleVector(ux, Math.cos(theta) * rx),
+            scaleVector(uy, Math.sin(theta) * ry)
+        ));
+    }
+    return points;
+}
+
+function pointUnit(angle) {
+    const radians = angle * Math.PI / 180;
+    return { x: Math.cos(radians), y: Math.sin(radians) };
+}
+
+function scaleVector(vector, scale) {
+    return { x: vector.x * scale, y: vector.y * scale };
+}
+
+function addVectors() {
+    return Array.from(arguments).reduce((sum, vector) => ({
+        x: sum.x + vector.x,
+        y: sum.y + vector.y,
+    }), { x: 0, y: 0 });
+}
+
+function unitVector(vector) {
+    const length = Math.sqrt(vector.x * vector.x + vector.y * vector.y);
+    if (length < 0.0001) return { x: 0, y: -1 };
+    return {
+        x: vector.x / length,
+        y: vector.y / length,
+    };
+}
+
+function pointsToPoly(points) {
+    return points.map(point => `${cleanNumber(point.x)},${cleanNumber(point.y)}`).join(' ');
+}
+
+function normalizeStyle(style) {
+    const source = style && typeof style == 'object' ? style : {};
+    const regularSource = source.regular && typeof source.regular == 'object' ? source.regular : {};
+    const regular = {
+        fill: cleanColor(regularSource.fill, STYLE_DEFAULTS.regular.fill),
+        stroke: cleanColor(regularSource.stroke, STYLE_DEFAULTS.regular.stroke),
+        fillOpacity: cleanOpacity(regularSource.fillOpacity, STYLE_DEFAULTS.regular.fillOpacity),
+        strokeOpacity: cleanOpacity(regularSource.strokeOpacity, STYLE_DEFAULTS.regular.strokeOpacity),
+        strokeWidth: cleanNumber(regularSource.strokeWidth, STYLE_DEFAULTS.regular.strokeWidth),
+    };
+    const normalized = { regular: regular };
+    const dependentDefaults = {
+        hover: {
+            fill: regular.fill,
+            stroke: regular.stroke,
+            fillOpacity: STYLE_DEFAULTS.hover.fillOpacity,
+            strokeOpacity: regular.strokeOpacity,
+            strokeWidth: regular.strokeWidth,
+        },
+        selected: {
+            fill: regular.fill,
+            stroke: regular.stroke,
+            fillOpacity: STYLE_DEFAULTS.selected.fillOpacity,
+            strokeOpacity: regular.strokeOpacity,
+            strokeWidth: regular.strokeWidth,
+        },
+    };
+    for (const state of ['hover', 'selected']) {
+        const stateSource = source[state] && typeof source[state] == 'object' ? source[state] : {};
+        const defaults = dependentDefaults[state];
+        normalized[state] = {
+            fill: cleanColor(stateSource.fill, defaults.fill),
+            stroke: cleanColor(stateSource.stroke, defaults.stroke),
+            fillOpacity: cleanOpacity(stateSource.fillOpacity, defaults.fillOpacity),
+            strokeOpacity: cleanOpacity(stateSource.strokeOpacity, defaults.strokeOpacity),
+            strokeWidth: cleanNumber(stateSource.strokeWidth, defaults.strokeWidth),
+        };
+    }
+    return normalized;
+}
+
+function normalizeStyles(styles) {
+    const normalized = {};
+    normalized[DEFAULT_STYLE_NAME] = normalizeStyle(styles && typeof styles[DEFAULT_STYLE_NAME] == 'object' ? styles[DEFAULT_STYLE_NAME] : {});
+    if (!styles || typeof styles != 'object') return normalized;
+    Object.keys(styles).forEach(name => {
+        const cleanName = normalizeStyleName(name);
+        if (!cleanName || cleanName == DEFAULT_STYLE_NAME || typeof styles[name] != 'object') return;
+        normalized[cleanName] = normalizeStyle(styles[name]);
+    });
+    return normalized;
+}
+
+function normalizeStyleName(name) {
+    const clean = (name ?? '').toString().trim().replace(/\s+/g, ' ');
+    return clean.length > 0 && clean.length <= 64 ? clean : '';
+}
+
+function normalizeStyleReference(style) {
+    if (typeof style == 'string') {
+        const name = normalizeStyleName(style);
+        return name && editorData.styles[name] ? name : DEFAULT_STYLE_NAME;
+    }
+    if (style && typeof style == 'object') {
+        return addStyleFromInline(style);
+    }
+    return DEFAULT_STYLE_NAME;
+}
+
+function addStyleFromInline(style) {
+    const normalized = normalizeStyle(style);
+    const signature = styleSignature(normalized);
+    for (const name of Object.keys(editorData.styles)) {
+        if (styleSignature(editorData.styles[name]) == signature) return name;
+    }
+    const name = uniqueStyleName('style');
+    editorData.styles[name] = normalized;
+    return name;
+}
+
+function uniqueStyleName(baseName) {
+    const base = normalizeStyleName(baseName) || 'style';
+    if (!editorData.styles[base]) return base;
+    let idx = 2;
+    while (editorData.styles[`${base} ${idx}`]) idx++;
+    return `${base} ${idx}`;
+}
+
+function styleSignature(style) {
+    return JSON.stringify(normalizeStyle(style));
+}
+
+function getStyleNameForArea(area) {
+    return normalizeStyleReference(area ? area.style : DEFAULT_STYLE_NAME);
+}
+
+function getStyleByName(name) {
+    name = normalizeStyleName(name);
+    if (!name || !editorData.styles[name]) name = DEFAULT_STYLE_NAME;
+    return normalizeStyle(editorData.styles[name] ?? {});
+}
+
+function getAreaStyle(area) {
+    return getStyleByName(getStyleNameForArea(area));
+}
+
+function cleanColor(value, fallback) {
+    const color = (value ?? '').toString();
+    return /^#[0-9a-fA-F]{6}$/.test(color) ? color.toLowerCase() : fallback;
+}
+
+function cleanOpacity(value, fallback) {
+    const number = Number.parseFloat(value);
+    if (Number.isNaN(number)) return fallback;
+    return Math.max(0, Math.min(1, cleanNumber(number)));
+}
+
+function cleanNumber(value, fallback = 0) {
+    const number = Number.parseFloat(value);
+    if (Number.isNaN(number)) return fallback;
+    return Math.round(number * 100) / 100;
+}
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function getMousePosition(e) {
+    const rect = svg.getBoundingClientRect();
+    if (rect.width && rect.height) {
+        const scaleX = editorData.bounds.width / rect.width;
+        const scaleY = editorData.bounds.height / rect.height;
+        return {
+            x: Math.round((e.clientX - rect.left) * scaleX),
+            y: Math.round((e.clientY - rect.top) * scaleY),
+        };
+    }
+    const CTM = svg.getScreenCTM();
+    if (CTM && typeof CTM.inverse == 'function' && typeof svg.createSVGPoint == 'function') {
+        const point = svg.createSVGPoint();
+        point.x = e.clientX;
+        point.y = e.clientY;
+        const transformed = point.matrixTransform(CTM.inverse());
+        const pos = {
+            x: Math.round(transformed.x),
+            y: Math.round(transformed.y),
+        };
+        return isFinitePoint(pos) ? pos : null;
+    }
+    if (!CTM) {
+        return null;
+    }
+    const pos = {
         x: Math.round((e.clientX - CTM.e) / CTM.a),
         y: Math.round((e.clientY - CTM.f) / CTM.d)
     };
+    return isFinitePoint(pos) ? pos : null;
 }
 
 function createEditShape(area) {
     if (editShape) {
         $svg.find('.edit-shape').remove();
     }
-    if (area.type == 'poly') {
-        editShape = createSVG('polygon', { points: '' });
-        editShape.classList.add('edit-shape');
-        svg.appendChild(editShape);
-    }
+    editShape = createShapeElement(area.type, area.data, { 'class': 'edit-shape' });
+    if (editShape) svg.appendChild(editShape);
 }
 
 function updateEditShape() {
-    if (editShape) {
-        const points = editorData.anchors.map(function(anchor) {
-            return `${anchor.getAttribute('cx')},${anchor.getAttribute('cy')}`;
-        }).join(' ');
-        editShape.setAttributeNS(null, 'points', points);
-    }
+    if (!editShape || !currentAreaId) return;
+    storeShapeData(currentAreaId);
+    setShapeAttributes(editShape, editorData.areas[currentAreaId].type, editorData.areas[currentAreaId].data);
+    updateBackgroundShape(currentAreaId, true);
 }
 
 function storeShapeData(id) {
     const area = editorData.areas[id] ?? null;
     if (!area) return;
-
-    if (area.type == 'poly') {
-        const points = editorData.anchors.map(function(anchor) {
-            return `${anchor.getAttribute('cx')},${anchor.getAttribute('cy')}`;
-        }).join(' ');
-        editorData.areas[id].data = points;
-        $svg.find('polygon[data-id="' + id + '"]').each(function() {
-            this.setAttributeNS(null, 'points', points);
+    const data = dataFromAnchors(area.type);
+    if (data) {
+        editorData.areas[id].data = data;
+        $svg.find('[data-id="' + id + '"]').each(function() {
+            setShapeAttributes(this, area.type, data);
         });
     }
-    // TODO - other shapes
 }
 
-function activateAnchor(anchor) {
+function dataFromAnchors(type) {
+    if (type == 'poly') {
+        const points = editorData.anchors
+            .filter(anchor => anchor.dataset.role != 'center')
+            .map(anchorPoint)
+            .filter(isFinitePoint);
+        return pointsToPoly(points);
+    }
+    if (type == 'rect' && editorData.anchors.length >= 2) {
+        const centerAnchor = findAnchorByRole('center');
+        const widthAnchor = findAnchorByRole('width');
+        const heightAnchor = findAnchorByRole('height');
+        if (!centerAnchor || !widthAnchor || !heightAnchor) return null;
+        const c = anchorPoint(centerAnchor);
+        const w = anchorPoint(widthAnchor);
+        const h = anchorPoint(heightAnchor);
+        const width = 2 * distance(c, w);
+        const height = 2 * distance(c, h);
+        return normalizeShapeData('rect', {
+            x: c.x - width / 2,
+            y: c.y - height / 2,
+            width: width,
+            height: height,
+            angle: angleBetween(c, w),
+        });
+    }
+    if (type == 'circle' && editorData.anchors.length >= 2) {
+        const centerAnchor = findAnchorByRole('center');
+        const radiusAnchor = findAnchorByRole('radius');
+        if (!centerAnchor || !radiusAnchor) return null;
+        const c = anchorPoint(centerAnchor);
+        const r = distance(c, anchorPoint(radiusAnchor));
+        return normalizeShapeData('circle', {
+            cx: c.x,
+            cy: c.y,
+            r: r,
+        });
+    }
+    if (type == 'ell' && editorData.anchors.length >= 3) {
+        const centerAnchor = findAnchorByRole('center');
+        const rxAnchor = findAnchorByRole('radius-x');
+        const ryAnchor = findAnchorByRole('radius-y');
+        if (!centerAnchor || !rxAnchor || !ryAnchor) return null;
+        const c = anchorPoint(centerAnchor);
+        const x = anchorPoint(rxAnchor);
+        const y = anchorPoint(ryAnchor);
+        return normalizeShapeData('ell', {
+            cx: c.x,
+            cy: c.y,
+            rx: distance(c, x),
+            ry: distance(c, y),
+            angle: angleBetween(c, x),
+        });
+    }
+    return null;
+}
+
+function anchorPoint(anchor) {
+    if (anchor.tagName.toLowerCase() == 'rect') {
+        return {
+            x: Number.parseFloat(anchor.getAttribute('x') ?? '0') + Number.parseFloat(anchor.getAttribute('width') ?? '0') / 2,
+            y: Number.parseFloat(anchor.getAttribute('y') ?? '0') + Number.parseFloat(anchor.getAttribute('height') ?? '0') / 2,
+        };
+    }
+    return {
+        x: Number.parseFloat(anchor.getAttribute('cx') ?? '0'),
+        y: Number.parseFloat(anchor.getAttribute('cy') ?? '0'),
+    };
+}
+
+function findAnchorByRole(role) {
+    return editorData.anchors.find(anchor => anchor.dataset.role == role) ?? null;
+}
+
+function setAnchorPoint(anchor, point) {
+    if (anchor.tagName.toLowerCase() == 'rect') {
+        const side = Number.parseFloat(anchor.getAttribute('width') ?? '0');
+        anchor.setAttributeNS(null, 'x', cleanNumber(point.x - side / 2));
+        anchor.setAttributeNS(null, 'y', cleanNumber(point.y - side / 2));
+        return;
+    }
+    anchor.setAttributeNS(null, 'cx', cleanNumber(point.x));
+    anchor.setAttributeNS(null, 'cy', cleanNumber(point.y));
+}
+
+function translateAnchor(anchor, dx, dy) {
+    const point = anchorPoint(anchor);
+    setAnchorPoint(anchor, {
+        x: point.x + dx,
+        y: point.y + dy,
+    });
+}
+
+function distance(a, b) {
+    return Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+}
+
+function angleBetween(a, b) {
+    return cleanNumber(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI);
+}
+
+function pointFromAngle(center, angle, length) {
+    const radians = angle * Math.PI / 180;
+    return {
+        x: center.x + Math.cos(radians) * length,
+        y: center.y + Math.sin(radians) * length,
+    };
+}
+
+function snapAngle(angle, step = RADIAL_GRID_STEP) {
+    return Math.round(angle / step) * step;
+}
+
+function snapPointToRadialGrid(center, point) {
+    const length = distance(center, point);
+    if (length < 0.0001) return point;
+    return pointFromAngle(center, snapAngle(angleBetween(center, point)), length);
+}
+
+function snappedEditHandlePoint(point, snap) {
+    if (!snap || !currentAreaId || !currentAnchor) return point;
+    if (currentAnchor.dataset.role == 'center') {
+        return snapPointToRadialGrid(editDragGuideCenter, point);
+    }
+    const area = editorData.areas[currentAreaId] ?? null;
+    if (!area || area.type == 'poly') return point;
+    const centerAnchor = findAnchorByRole('center');
+    if (!centerAnchor) return point;
+    return snapPointToRadialGrid(anchorPoint(centerAnchor), point);
+}
+
+function syncOrientedHandles(constrain) {
+    if (!currentAreaId || !currentAnchor) return;
+    const area = editorData.areas[currentAreaId];
+    if (!area || area.type == 'poly') return;
+
+    const centerAnchor = findAnchorByRole('center');
+    if (!centerAnchor) return;
+    const center = anchorPoint(centerAnchor);
+    const role = currentAnchor.dataset.role;
+
+    if (area.type == 'circle') {
+        return;
+    }
+
+    const primaryRole = area.type == 'rect' ? 'width' : 'radius-x';
+    const secondaryRole = area.type == 'rect' ? 'height' : 'radius-y';
+    const primaryAnchor = findAnchorByRole(primaryRole);
+    const secondaryAnchor = findAnchorByRole(secondaryRole);
+    if (!primaryAnchor || !secondaryAnchor) return;
+
+    if (role == 'corner' && (area.type == 'rect' || area.type == 'ell')) {
+        const primaryPoint = anchorPoint(primaryAnchor);
+        const secondaryPoint = anchorPoint(secondaryAnchor);
+        const cornerPoint = anchorPoint(currentAnchor);
+        const basePrimary = Math.max(1, distance(center, primaryPoint));
+        const baseSecondary = Math.max(1, distance(center, secondaryPoint));
+        const v = { x: cornerPoint.x - center.x, y: cornerPoint.y - center.y };
+        const diagonalAngle = Math.atan2(baseSecondary, basePrimary) * 180 / Math.PI;
+        const primaryAngle = angleBetween(center, cornerPoint) - diagonalAngle;
+        const scale = Math.max(0.05, distance(center, cornerPoint) / Math.sqrt(basePrimary * basePrimary + baseSecondary * baseSecondary));
+        const newPrimary = basePrimary * scale;
+        const newSecondary = baseSecondary * scale;
+        setAnchorPoint(primaryAnchor, pointFromAngle(center, primaryAngle, newPrimary));
+        setAnchorPoint(secondaryAnchor, pointFromAngle(center, primaryAngle + 90, newSecondary));
+        setAnchorPoint(currentAnchor, addVectors(
+            center,
+            { x: anchorPoint(primaryAnchor).x - center.x, y: anchorPoint(primaryAnchor).y - center.y },
+            { x: anchorPoint(secondaryAnchor).x - center.x, y: anchorPoint(secondaryAnchor).y - center.y }
+        ));
+    }
+    else if (role == primaryRole) {
+        const primary = anchorPoint(primaryAnchor);
+        const angle = angleBetween(center, primary);
+        const primaryLength = distance(center, primary);
+        const secondaryLength = constrain ? primaryLength : distance(center, anchorPoint(secondaryAnchor));
+        setAnchorPoint(secondaryAnchor, pointFromAngle(center, angle + 90, secondaryLength));
+    }
+    else if (role == secondaryRole) {
+        const secondary = anchorPoint(secondaryAnchor);
+        const angle = angleBetween(center, secondary) - 90;
+        const secondaryLength = distance(center, secondary);
+        const primaryLength = constrain ? secondaryLength : distance(center, anchorPoint(primaryAnchor));
+        setAnchorPoint(primaryAnchor, pointFromAngle(center, angle, primaryLength));
+    }
+    syncCornerHandle();
+}
+
+function syncCornerHandle() {
+    if (!currentAreaId || !['rect', 'ell'].includes(editorData.areas[currentAreaId]?.type)) return;
+    const area = editorData.areas[currentAreaId];
+    const centerAnchor = findAnchorByRole('center');
+    const widthAnchor = findAnchorByRole(area.type == 'rect' ? 'width' : 'radius-x');
+    const heightAnchor = findAnchorByRole(area.type == 'rect' ? 'height' : 'radius-y');
+    const cornerAnchor = findAnchorByRole('corner');
+    if (!centerAnchor || !widthAnchor || !heightAnchor || !cornerAnchor || currentAnchor === cornerAnchor) return;
+    const c = anchorPoint(centerAnchor);
+    setAnchorPoint(cornerAnchor, addVectors(c, { x: anchorPoint(widthAnchor).x - c.x, y: anchorPoint(widthAnchor).y - c.y }, { x: anchorPoint(heightAnchor).x - c.x, y: anchorPoint(heightAnchor).y - c.y }));
+}
+
+function activateAnchor(anchor, useFallback = true) {
     $svg.find('.anchor.active').each(function() { this.classList.remove('active'); });
-    const n = editorData.anchors.length;
     if (anchor) {
         anchor.classList.add('active');
-        // Shuffle array so that active is the last
-        const idx = editorData.anchors.indexOf(anchor);
-        if (idx != n - 1) {
-            editorData.anchors.push(...editorData.anchors.splice(0, idx + 1));
+        if (anchor.dataset.role != 'center') {
+            lastVertexAnchor = anchor;
         }
         currentAnchor = anchor;
     }
-    else if (n > 0) {
-        activateAnchor(editorData.anchors[n - 1]);
+    else if (useFallback && editorData.anchors.length > 0) {
+        const center = findAnchorByRole('center');
+        activateAnchor(center ?? editorData.anchors[editorData.anchors.length - 1]);
+        return;
     }
     else {
         currentAnchor = null;
     }
+    updateLastAnchorMarker();
 }
 
 function removeAnchor(anchor) {
     const idx = editorData.anchors.indexOf(anchor);
     editorData.anchors.splice(idx, 1);
+    if (lastVertexAnchor === anchor) {
+        lastVertexAnchor = null;
+    }
     anchor.remove();
     activateAnchor(null);
+}
+
+function updatePolyCenterAnchor() {
+    if (!currentAreaId || editorData.areas[currentAreaId]?.type != 'poly') return;
+    const centerAnchor = findAnchorByRole('center');
+    const points = editorData.anchors
+        .filter(anchor => anchor.dataset.role != 'center')
+        .map(anchorPoint)
+        .filter(isFinitePoint);
+    if (points.length < 2) {
+        if (centerAnchor) {
+            const idx = editorData.anchors.indexOf(centerAnchor);
+            if (idx > -1) editorData.anchors.splice(idx, 1);
+            if (currentAnchor === centerAnchor) currentAnchor = null;
+            centerAnchor.remove();
+        }
+        return;
+    }
+    const center = polygonCenterOfMass(points);
+    if (!centerAnchor) {
+        const anchor = createAnchor(Object.assign(center, { role: 'center' }));
+        svg.appendChild(anchor);
+        editorData.anchors.push(anchor);
+        bringCenterAnchorToFront();
+        return;
+    }
+    setAnchorPoint(centerAnchor, center);
+    bringCenterAnchorToFront();
+}
+
+function createAnchor(point, extraClass = '') {
+    const side = 8 / editorData.zoom;
+    const classes = ['anchor', extraClass].filter(Boolean).join(' ');
+    if ((point.role ?? '') == 'center') {
+        return createSVG('rect', {
+            x: cleanNumber(point.x - side / 2),
+            y: cleanNumber(point.y - side / 2),
+            width: side,
+            height: side,
+            'class': classes,
+            'data-role': point.role ?? '',
+        });
+    }
+    return createSVG('circle', {
+        cx: point.x,
+        cy: point.y,
+        r: side / 2,
+        'class': classes,
+        'data-role': point.role ?? '',
+    });
+}
+
+function updateLastAnchorMarker() {
+    $svg.find('.last-anchor-marker').remove();
+    if (!currentAreaId || editorData.areas[currentAreaId]?.type != 'poly') return;
+    if (!currentAnchor || currentAnchor.dataset.role == 'center') {
+        bringCenterAnchorToFront();
+        return;
+    }
+    const p = anchorPoint(currentAnchor);
+    const next = getNextPolygonVertex(currentAnchor);
+    const direction = next ? unitVector({ x: anchorPoint(next).x - p.x, y: anchorPoint(next).y - p.y }) : { x: 0, y: -1 };
+    const length = 9 / editorData.zoom;
+    const end = addVectors(p, scaleVector(direction, length));
+    const marker = createSVG('line', {
+        x1: cleanNumber(p.x),
+        y1: cleanNumber(p.y),
+        x2: cleanNumber(end.x),
+        y2: cleanNumber(end.y),
+        'class': 'last-anchor-marker',
+    });
+    svg.appendChild(marker);
+    bringCenterAnchorToFront();
+}
+
+function getNextPolygonVertex(anchor) {
+    const vertices = editorData.anchors.filter(item => item.dataset.role != 'center');
+    const idx = vertices.indexOf(anchor);
+    if (idx == -1 || vertices.length < 2) return null;
+    return vertices[(idx + 1) % vertices.length];
+}
+
+function bringCenterAnchorToFront() {
+    const center = findAnchorByRole('center');
+    if (center && center.parentNode) {
+        center.parentNode.appendChild(center);
+    }
 }
 
 function setMode(mode) {
@@ -442,6 +1380,7 @@ function setMode(mode) {
         log('Mode updated to: ' + mode);
     }
     else {
+        updateHoveredArea('');
         $svg.removeClass('preview');
         $('button[data-action="preview"]').addClass('btn-outline-primary').removeClass('btn-primary');
     }
@@ -452,15 +1391,17 @@ function setMode(mode) {
         log('Mode updated to: ' + mode);
         if (prevMode == 'move' && editorData.selection.length == 1) {
             // When there is only a single item in the selection, then set it as the currently edited area
-            setCurrentEditArea(editorData.selection[0]);
+            setCurrentEditArea(editorData.selection[0], true);
         }
     }
-    else if (mode == 'move' && prevMode != 'move-moving') {
-        // Add current area to move selection (if there is one) and clear current area.
-        const prevAreaId = currentAreaId;
-        setCurrentEditArea('');
-        clearEditAnchors();
-        clearSelection([prevAreaId]);
+    else if (mode == 'move') {
+        if (prevMode != 'move-moving') {
+            // Add current area to move selection (if there is one) and clear current area.
+            const prevAreaId = currentAreaId;
+            setCurrentEditArea('');
+            clearEditAnchors();
+            clearSelection([prevAreaId]);
+        }
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-move"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
         $svg.addClass('move').removeClass('edit').removeClass('preview');
@@ -470,6 +1411,7 @@ function setMode(mode) {
         $('button[data-action="mode-move"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         $('button[data-action="mode-edit"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
     }
+    updateEditRadialGuide(ctrlKeyDown);
 }
 
 //#region Selection
@@ -524,17 +1466,33 @@ function removeFromSelection(areaIds) {
 function updateSelection() {
     // SVG
     $svg.find('.background').each(function() { 
-        if (editorData.selection.includes(this.getAttribute('data-id'))) {
+        const id = this.getAttribute('data-id');
+        if (editorData.selection.includes(id)) {
             this.classList.add('selected');
+            applyDesignerShapeStyle(this, editorData.areas[id], 'selected');
         }
         else {
             this.classList.remove('selected');
+            applyDesignerShapeStyle(this, editorData.areas[id], id == hoverAreaId ? 'hover' : 'regular');
         }
     });
     // Table
     $('tr[data-area-id]').each(function() {
         const checked = editorData.selection.includes(this.dataset.areaId);
         $(this).find('input[name=checked-area]').prop('checked', checked);
+        updateStyleSample(this.dataset.areaId);
+    });
+}
+
+function updateHoveredArea(id) {
+    if (hoverAreaId == id) return;
+    const previousId = hoverAreaId;
+    hoverAreaId = id;
+    [previousId, hoverAreaId].forEach(areaId => {
+        if (!areaId || !editorData.areas[areaId]) return;
+        const el = $svg.find('.background[data-id="' + areaId + '"]')[0];
+        if (!el) return;
+        applyDesignerShapeStyle(el, editorData.areas[areaId], editorData.selection.includes(areaId) ? 'selected' : (areaId == hoverAreaId ? 'hover' : 'regular'));
     });
 }
 
@@ -542,11 +1500,371 @@ function moveSelection(dx, dy) {
     for (const areaId of editorData.selection) {
         const area = editorData.areas[areaId];
         log('Moving area ' + areaId + ' by ' + dx + ', ' + dy, area);
-        area.data = applyTranslation(area.data, dx, dy);
+        area.data = translateShapeData(area.type, area.data, dx, dy);
         $svg.find('[data-id="' + areaId + '"]').each(function() {
-            this.setAttributeNS(null, 'points', area.data ?? '');
+            setShapeAttributes(this, area.type, area.data);
         });
     }
+}
+
+function moveCurrentEditArea(dx, dy) {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !editorData.anchors.length) return false;
+    editorData.anchors.forEach(anchor => translateAnchor(anchor, dx, dy));
+    updateEditShape();
+    updateLastAnchorMarker();
+    return true;
+}
+
+function moveActiveEditHandle(dx, dy) {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !currentAnchor) return false;
+    if (currentAnchor.dataset.role == 'center') {
+        return moveCurrentEditArea(dx, dy);
+    }
+    translateAnchor(currentAnchor, dx, dy);
+    syncOrientedHandles(false);
+    updatePolyCenterAnchor();
+    updateEditShape();
+    updateLastAnchorMarker();
+    return true;
+}
+
+function clearCurrentShapeData() {
+    if (!currentAreaId || !editorData.areas[currentAreaId]) return false;
+    const area = editorData.areas[currentAreaId];
+    area.data = normalizeShapeData(area.type, null);
+    clearEditAnchors();
+    updateBackgroundShape(currentAreaId, true);
+    updateStyleControls();
+    return true;
+}
+
+function duplicateSelection(dx, dy) {
+    const copies = [];
+    const selected = selectedAreaIdsInRowOrder();
+    selected.forEach(id => {
+        const uuid = cloneArea(id, dx, dy);
+        addTableRow(uuid, id);
+        copies.push(uuid);
+    });
+    if (copies.length) {
+        clearSelection(copies);
+        if (editorData.mode == 'edit' && copies.length == 1) {
+            setCurrentEditArea(copies[0]);
+        }
+    }
+}
+
+function duplicateCurrentEditAreaForDrag() {
+    if (!currentAreaId || !editorData.areas[currentAreaId]) return false;
+    const originalId = currentAreaId;
+    const uuid = cloneArea(originalId, 0, 0);
+    addTableRow(uuid, originalId);
+    setCurrentEditArea(uuid);
+    currentAnchor = findAnchorByRole('center');
+    if (!currentAnchor) return false;
+    currentAnchor.classList.add('dragging');
+    return true;
+}
+
+function duplicateCurrentEditAreaForKeyboard() {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !areaHasData(editorData.areas[currentAreaId])) return false;
+    const originalId = currentAreaId;
+    const uuid = cloneArea(originalId, 0, 0);
+    addTableRow(uuid, originalId);
+    showWhenNoAreas();
+    setCurrentEditArea(uuid);
+    activateCenterHandle();
+    return true;
+}
+
+function startDraggingAnchor(anchor, pointerId, showGrid = ctrlKeyDown) {
+    if (!anchor) return false;
+    currentAnchor = anchor;
+    const anchorPos = anchorPoint(currentAnchor);
+    currentAnchor.dataset.lastX = anchorPos.x;
+    currentAnchor.dataset.lastY = anchorPos.y;
+    editDragGuideCenter.x = anchorPos.x;
+    editDragGuideCenter.y = anchorPos.y;
+    currentAnchor.classList.add('dragging');
+    activateAnchor(currentAnchor);
+    setMode('edit-move-anchor');
+    updateEditRadialGuide(showGrid);
+    svg.setPointerCapture(pointerId);
+    return true;
+}
+
+function initialDrawHandleRole(type) {
+    if (type == 'circle') return 'radius';
+    if (type == 'rect') return 'corner';
+    if (type == 'ell') return 'corner';
+    return '';
+}
+
+function insertPolygonAnchor(anchor) {
+    const center = findAnchorByRole('center');
+    const vertices = editorData.anchors.filter(item => item.dataset.role != 'center');
+    const insertAfter = currentAnchor && currentAnchor.dataset.role != 'center'
+        ? currentAnchor
+        : (vertices.includes(lastVertexAnchor) ? lastVertexAnchor : vertices[vertices.length - 1]);
+    if (insertAfter && editorData.anchors.includes(insertAfter)) {
+        editorData.anchors.splice(editorData.anchors.indexOf(insertAfter) + 1, 0, anchor);
+    }
+    else if (center) {
+        editorData.anchors.splice(editorData.anchors.indexOf(center), 0, anchor);
+    }
+    else {
+        editorData.anchors.push(anchor);
+    }
+    lastVertexAnchor = anchor;
+}
+
+function cycleEditAnchor(reverse) {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !editorData.anchors.length) return false;
+    const order = getAnchorTabOrder();
+    if (!order.length) return false;
+    const currentIdx = order.indexOf(currentAnchor);
+    const idx = currentIdx == -1 ? 0 : (currentIdx + (reverse ? -1 : 1) + order.length) % order.length;
+    activateAnchor(order[idx]);
+    return true;
+}
+
+function getAnchorTabOrder() {
+    const area = editorData.areas[currentAreaId] ?? null;
+    if (!area || area.type != 'poly') return editorData.anchors.slice();
+    const center = findAnchorByRole('center');
+    const vertices = editorData.anchors.filter(anchor => anchor.dataset.role != 'center');
+    if (!vertices.length) return center ? [center] : [];
+    const last = vertices.includes(lastVertexAnchor) ? lastVertexAnchor : vertices[vertices.length - 1];
+    const lastIdx = vertices.indexOf(last);
+    const orderedVertices = [];
+    for (let offset = 0; offset < vertices.length; offset++) {
+        orderedVertices.push(vertices[(lastIdx + offset) % vertices.length]);
+    }
+    return center ? [center].concat(orderedVertices) : orderedVertices;
+}
+
+function selectedAreaIdsInRowOrder() {
+    return $editor.find('tr[data-area-id]').toArray()
+        .map(row => row.dataset.areaId)
+        .filter(id => editorData.selection.includes(id));
+}
+
+function constrainedMoveDelta(dx, dy, constrain) {
+    dx = cleanNumber(dx);
+    dy = cleanNumber(dy);
+    if (!constrain || (dx == 0 && dy == 0)) return { x: dx, y: dy };
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    const snap = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4);
+    return {
+        x: cleanNumber(Math.cos(snap) * distance),
+        y: cleanNumber(Math.sin(snap) * distance),
+    };
+}
+
+function beginMovePreview() {
+    clearMovePreview();
+    const center = getSelectionCenter();
+    moveGuideCenter.x = center.x;
+    moveGuideCenter.y = center.y;
+}
+
+function updateMovePreview(dx, dy, isCopy, showAxes) {
+    svg.style.setProperty('--move-x', isCopy ? '0px' : dx + 'px');
+    svg.style.setProperty('--move-y', isCopy ? '0px' : dy + 'px');
+    $svg.toggleClass('copy-moving', isCopy);
+    if (isCopy) {
+        updateMoveCopyPreview(dx, dy);
+    }
+    else {
+        clearMoveCopyPreview();
+    }
+    updateMoveAxisGuide(showAxes);
+}
+
+function clearMovePreview() {
+    svg.style.setProperty('--move-x', 0);
+    svg.style.setProperty('--move-y', 0);
+    $svg.removeClass('copy-moving');
+    clearMoveCopyPreview();
+    clearMoveAxisGuide();
+}
+
+function updateMoveCopyPreview(dx, dy) {
+    clearMoveCopyPreview();
+    selectedAreaIdsInRowOrder().forEach(id => {
+        const area = editorData.areas[id];
+        if (!area) return;
+        const preview = createShapeElement(area.type, translateShapeData(area.type, area.data, dx, dy), {
+            'class': 'shape moving-copy-preview',
+            'data-preview-for': id,
+        });
+        applyDesignerShapeStyle(preview, area, 'selected');
+        svg.prepend(preview);
+    });
+}
+
+function clearMoveCopyPreview() {
+    $svg.find('.moving-copy-preview').remove();
+}
+
+function updateMoveAxisGuide(showAxes) {
+    clearMoveAxisGuide();
+    if (!showAxes) return;
+    svg.appendChild(createRadialGuide(moveGuideCenter, 'move-axis-guide'));
+}
+
+function clearMoveAxisGuide() {
+    $svg.find('.move-axis-guide').remove();
+}
+
+function updateEditRadialGuide(showGrid = ctrlKeyDown) {
+    clearEditRadialGuide();
+    if (!showGrid || !editorData || !svg || !['edit', 'edit-move-anchor'].includes(editorData.mode)) return;
+    const area = editorData.areas[currentAreaId] ?? null;
+    if (!area) return;
+    const centerAnchor = findAnchorByRole('center');
+    if (!centerAnchor) return;
+    const isCenterDrag = editorData.mode == 'edit-move-anchor' && currentAnchor && currentAnchor.dataset.role == 'center';
+    const canShowGuide = area.type != 'poly' || currentAnchor === centerAnchor;
+    if (!canShowGuide) return;
+    svg.appendChild(createRadialGuide(isCenterDrag ? editDragGuideCenter : anchorPoint(centerAnchor), 'edit-radial-guide'));
+    bringEditHandlesToFront();
+}
+
+function clearEditRadialGuide() {
+    if (!$svg || !$svg.length) return;
+    $svg.find('.edit-radial-guide').remove();
+}
+
+function createRadialGuide(center, className) {
+    const group = createSVG('g', { 'class': className });
+    RADIAL_GRID_ANGLES.forEach(angle => {
+        const segment = lineSegmentThroughBounds(center, angle);
+        if (!segment) return;
+        group.appendChild(createSVG('line', {
+            x1: segment.a.x,
+            y1: segment.a.y,
+            x2: segment.b.x,
+            y2: segment.b.y,
+        }));
+    });
+    return group;
+}
+
+function bringEditHandlesToFront() {
+    $svg.find('.edit-shape, .anchor, .last-anchor-marker').each(function() {
+        if (this.parentNode) this.parentNode.appendChild(this);
+    });
+}
+
+function setSpacePanKey(active) {
+    spaceKeyDown = !!active && !!editorData;
+    if (!spaceKeyDown) endCanvasPan();
+    updateCanvasPanClasses();
+}
+
+function updateCanvasPanClasses() {
+    const $container = $editor.find('#eim-container');
+    $container.toggleClass('eim-pan-ready', spaceKeyDown && !panningCanvas);
+    $container.toggleClass('eim-panning', panningCanvas);
+}
+
+function handleCanvasPanPointerEvent(e) {
+    if (panningCanvas) {
+        if (e.type == 'pointermove') {
+            updateCanvasPan(e);
+            return true;
+        }
+        if (e.type == 'pointerup' || e.type == 'pointercancel') {
+            endCanvasPan(e.pointerId);
+            e.preventDefault();
+            return true;
+        }
+        return true;
+    }
+    if (e.type == 'pointerdown' && spaceKeyDown && e.button == 0) {
+        beginCanvasPan(e);
+        return true;
+    }
+    return false;
+}
+
+function beginCanvasPan(e) {
+    const container = $editor.find('#eim-container')[0];
+    if (!container) return;
+    panningCanvas = true;
+    panPointerId = e.pointerId;
+    panStart.x = e.clientX;
+    panStart.y = e.clientY;
+    panStart.scrollLeft = container.scrollLeft;
+    panStart.scrollTop = container.scrollTop;
+    hideTooltip();
+    updateCanvasPanClasses();
+    svg.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function updateCanvasPan(e) {
+    const container = $editor.find('#eim-container')[0];
+    if (!container) return;
+    container.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+    container.scrollTop = panStart.scrollTop - (e.clientY - panStart.y);
+    e.preventDefault();
+    e.stopPropagation();
+}
+
+function endCanvasPan(pointerId = null) {
+    if (!panningCanvas) return;
+    panningCanvas = false;
+    const releasePointerId = pointerId ?? panPointerId;
+    panPointerId = null;
+    if (releasePointerId != null && svg && typeof svg.releasePointerCapture == 'function') {
+        try {
+            svg.releasePointerCapture(releasePointerId);
+        }
+        catch (_) { }
+    }
+    updateCanvasPanClasses();
+}
+
+function getSelectionCenter() {
+    const selected = $svg.find('.background.selected').toArray();
+    if (!selected.length) return { x: moveStartPos.x, y: moveStartPos.y };
+    const bounds = selected.reduce((acc, el) => {
+        const box = el.getBBox();
+        return {
+            minX: Math.min(acc.minX, box.x),
+            minY: Math.min(acc.minY, box.y),
+            maxX: Math.max(acc.maxX, box.x + box.width),
+            maxY: Math.max(acc.maxY, box.y + box.height),
+        };
+    }, { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity });
+    return {
+        x: cleanNumber((bounds.minX + bounds.maxX) / 2),
+        y: cleanNumber((bounds.minY + bounds.maxY) / 2),
+    };
+}
+
+function lineSegmentThroughBounds(center, angle) {
+    const ux = Math.cos(angle * Math.PI / 180);
+    const uy = Math.sin(angle * Math.PI / 180);
+    const ts = [];
+    if (Math.abs(ux) > 0.0001) {
+        ts.push((0 - center.x) / ux);
+        ts.push((editorData.bounds.width - center.x) / ux);
+    }
+    if (Math.abs(uy) > 0.0001) {
+        ts.push((0 - center.y) / uy);
+        ts.push((editorData.bounds.height - center.y) / uy);
+    }
+    const points = ts
+        .map(t => ({ x: cleanNumber(center.x + ux * t), y: cleanNumber(center.y + uy * t), t: t }))
+        .filter(point => point.x >= -0.01 && point.y >= -0.01 && point.x <= editorData.bounds.width + 0.01 && point.y <= editorData.bounds.height + 0.01)
+        .sort((a, b) => a.t - b.t);
+    if (points.length < 2) return null;
+    return { a: points[0], b: points[points.length - 1] };
 }
 
 function applyTranslation(data, dx, dy) {
@@ -569,12 +1887,32 @@ function applyTranslation(data, dx, dy) {
 //#region Keyboard handling
 
 function handleKeyEvent(e) {
-    if (e.target.tagName == 'INPUT' || e.target.tagName == 'TEXTAREA') return;
+    if (shouldIgnoreKeyboardEvent(e)) return;
     const modifier = [
         e.altKey ? 'Alt' : '',
         e.ctrlKey ? 'Ctrl' : '',
         e.shiftKey ? 'Shift' : ''
     ].join('');
+    if (modifier == 'Ctrl' && (e.key == 'ArrowUp' || e.key == 'ArrowDown') && editorData.mode != 'preview') {
+        if (selectAdjacentArea(e.key == 'ArrowDown' ? 1 : -1)) {
+            e.preventDefault();
+            return false;
+        }
+    }
+    const arrowDelta = keyMoveDelta(e.key, e.shiftKey ? 10 : 1);
+    if (arrowDelta && (modifier == '' || modifier == 'Shift') && editorData.mode == 'edit') {
+        if (moveActiveEditHandle(arrowDelta.x, arrowDelta.y)) {
+            e.preventDefault();
+            return false;
+        }
+    }
+    if (arrowDelta && (modifier == '' || modifier == 'Shift') && editorData.mode == 'move') {
+        if (editorData.selection.length) {
+            moveSelection(arrowDelta.x, arrowDelta.y);
+            e.preventDefault();
+            return false;
+        }
+    }
     // Key handling depends on mode
     // Preview mode
     if (editorData.mode == 'preview') {
@@ -593,22 +1931,41 @@ function handleKeyEvent(e) {
         }
     }
     else if (editorData.mode == 'edit') {
+        if ((modifier == '' || modifier == 'Shift') && e.key == 'Tab') {
+            if (cycleEditAnchor(e.shiftKey)) {
+                e.preventDefault();
+                return false;
+            }
+        }
         // Esc will undo any changes
-        if (modifier == '' && e.key == 'Escape') {
-            // TODO
+        else if (modifier == '' && e.key == 'Escape') {
+            clearCurrentArea();
             e.preventDefault();
             return false;
         }
-        else if (modifier == '' && e.key == 'Backspace' && currentAnchor) {
+        else if (modifier == '' && e.key == 'Backspace' && currentAnchor && currentAnchor.dataset.role != 'center' && editorData.areas[currentAreaId]?.type == 'poly') {
             removeAnchor(currentAnchor);
+            updatePolyCenterAnchor();
             updateEditShape();
             e.preventDefault();
             return false;
         }
-        else if (currentAnchor && modifier == '' && e.key == 'Delete') {
-            clearEditAnchors();
+        else if (modifier == '' && e.key == 'Delete' && currentAreaId && editorData.areas[currentAreaId]) {
+            clearCurrentShapeData();
             e.preventDefault();
             return false;
+        }
+        else if (modifier == '' && e.key == 'c') {
+            if (activateCenterHandle()) {
+                e.preventDefault();
+                return false;
+            }
+        }
+        else if (modifier == '' && e.key == 'd') {
+            if (duplicateCurrentEditAreaForKeyboard()) {
+                e.preventDefault();
+                return false;
+            }
         }
         // When the letter m is pressed, switch to move mode
         else if (modifier == '' && e.key == 'm') {
@@ -617,12 +1974,62 @@ function handleKeyEvent(e) {
     }
 }
 
+function shouldIgnoreKeyboardEvent(e) {
+    const $target = $(e.target);
+    return $target.is('input, textarea, select, button, a')
+        || $target.closest('.bootstrap-select, .dropdown-menu, .eim-target-picker, .eim-target-picker-menu, [contenteditable="true"]').length > 0;
+}
+
+function keyMoveDelta(key, step = 1) {
+    const deltas = {
+        ArrowUp: { x: 0, y: -step },
+        ArrowDown: { x: 0, y: step },
+        ArrowLeft: { x: -step, y: 0 },
+        ArrowRight: { x: step, y: 0 },
+    };
+    return deltas[key] ?? null;
+}
+
+function activateCenterHandle() {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !editorData.anchors.length) return false;
+    const center = findAnchorByRole('center');
+    if (!center) return false;
+    activateAnchor(center);
+    return true;
+}
+
+function selectAdjacentArea(direction) {
+    const ids = areaIdsInRowOrder();
+    if (!ids.length) return false;
+    let idx = ids.indexOf(currentAreaId);
+    if (idx == -1 && editorData.selection.length) {
+        const selectedInRowOrder = ids.filter(id => editorData.selection.includes(id));
+        idx = selectedInRowOrder.length ? ids.indexOf(selectedInRowOrder[0]) : -1;
+    }
+    const nextIdx = idx == -1
+        ? (direction > 0 ? 0 : ids.length - 1)
+        : Math.max(0, Math.min(ids.length - 1, idx + direction));
+    if (idx == nextIdx && currentAreaId == ids[nextIdx]) return false;
+    setMode('edit');
+    setCurrentEditArea(ids[nextIdx], true);
+    return true;
+}
+
+function areaIdsInRowOrder() {
+    return $editor.find('tr[data-area-id]').toArray()
+        .map(row => row.dataset.areaId)
+        .filter(id => id && editorData.areas[id]);
+}
+
 //#endregion
 
 function clearEditAnchors() {
     editorData.anchors = [];
     $svg.find('.anchor').each(function() { this.remove() });
     $svg.find('.edit-shape').each(function() { this.remove() });
+    $svg.find('.last-anchor-marker').remove();
+    clearEditRadialGuide();
+    lastVertexAnchor = null;
     activateAnchor(null);
 }
 
@@ -652,7 +2059,16 @@ function hideTooltip() {
  * @param {PointerEvent} e 
  */
 function handleSVGEvent(e) {
-    if ((editorData.mode == 'edit' || editorData.mode == 'move') && e.type == 'pointermove') {
+    if (e.type == 'pointerdown' && svg && typeof svg.focus == 'function') {
+        try {
+            svg.focus({ preventScroll: true });
+        }
+        catch (_) {
+            svg.focus();
+        }
+    }
+    if (handleCanvasPanPointerEvent(e)) return;
+    if ((editorData.mode == 'edit' || editorData.mode == 'move' || editorData.mode == 'preview') && e.type == 'pointermove') {
         // Get all elements under the mouse position
         const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
         // Filter elements that are part of the <svg> and have the class "background"
@@ -662,22 +2078,36 @@ function handleSVGEvent(e) {
             element.classList.contains('background') && // Check for the "background" class
             !element.classList.contains('editing')      // Exclude elements with the "editing" class
         );
-        if (backgroundElements.length == 1) {
+        if (editorData.mode == 'preview') {
+            updateHoveredArea(backgroundElements.length == 1 ? (backgroundElements[0].getAttribute('data-id') ?? '') : '');
+        }
+        if (backgroundElements.length == 1 && editorData.mode != 'preview') {
             showTooltip(backgroundElements[0].getAttribute('data-id'), e.pageX, e.pageY);
         }
-        else {
+        else if (editorData.mode != 'preview') {
             hideTooltip();
         }
     }
     // Only handle left mouse button
     if (e.button != 0 && !(editorData.mode == 'edit-move-anchor' || editorData.mode == 'move-moving')) return;
     const pos = getMousePosition(e);
+    if (!pos) return;
+    ctrlKeyDown = !!e.ctrlKey;
     if (e.target == null) return;
     const type = e.type ?? ''
     const $target = $(e.target);
 
     //#region Mode: edit
     if (editorData.mode == 'edit') {
+
+        // Add an area to the selection without changing the currently edited area.
+        if (type == 'pointerdown' && e.ctrlKey && $target.hasClass('background')) {
+            const id = $target.attr('data-id') ?? '';
+            if (id != '' && editorData.areas[id]) {
+                addToSelection([id]);
+            }
+            return;
+        }
 
         // Select an area (that is not the currently edited area)
         if (type == 'pointerdown' && $target.hasClass('background') && $target.attr('data-id') != currentAreaId) {
@@ -690,25 +2120,51 @@ function handleSVGEvent(e) {
         if (type == 'pointerdown' && currentAreaId != '') {
             // Check if over existing anchor
             if ($target.hasClass('anchor')) {
+                if (e.altKey && ($target[0].dataset.role ?? '') == 'center') {
+                    if (!duplicateCurrentEditAreaForDrag()) return;
+                }
+                else {
+                    currentAnchor = $target[0];
+                }
                 // Set this anchor as the active one
-                currentAnchor = $target[0];
-                $target.addClass('dragging');
+                const anchorPos = anchorPoint(currentAnchor);
+                currentAnchor.dataset.lastX = anchorPos.x;
+                currentAnchor.dataset.lastY = anchorPos.y;
+                editDragGuideCenter.x = anchorPos.x;
+                editDragGuideCenter.y = anchorPos.y;
+                currentAnchor.dataset.dragMoved = '0';
+                currentAnchor.classList.add('dragging');
             }
             else {
+                const area = editorData.areas[currentAreaId];
+                if (area.type != 'poly' && editorData.anchors.length == 0) {
+                    const seededAreaId = currentAreaId;
+                    seedShapeAt(currentAreaId, pos);
+                    setCurrentEditArea('');
+                    setCurrentEditArea(seededAreaId);
+                    const dragAnchor = findAnchorByRole(initialDrawHandleRole(area.type));
+                    startDraggingAnchor(dragAnchor, e.pointerId, e.ctrlKey);
+                    return;
+                }
+                if (area.type != 'poly') {
+                    return;
+                }
                 // Create a new anchor
-                const newAnchor = createSVG('circle', {
-                    cx: pos.x,
-                    cy: pos.y,
-                    r: 4 / editorData.zoom,
-                    'class': 'anchor active dragging',
-                });
+                const newAnchor = createAnchor({ x: pos.x, y: pos.y }, 'active dragging');
                 svg.appendChild(newAnchor);
-                editorData.anchors.push(newAnchor);
+                insertPolygonAnchor(newAnchor);
                 currentAnchor = newAnchor;
+                currentAnchor.dataset.lastX = pos.x;
+                currentAnchor.dataset.lastY = pos.y;
+                editDragGuideCenter.x = pos.x;
+                editDragGuideCenter.y = pos.y;
+                currentAnchor.dataset.dragMoved = '0';
+                updatePolyCenterAnchor();
                 updateEditShape();
             }
             activateAnchor(currentAnchor);
             setMode('edit-move-anchor');
+            updateEditRadialGuide(e.ctrlKey);
             svg.setPointerCapture(e.pointerId);
             return;
         }
@@ -719,27 +2175,64 @@ function handleSVGEvent(e) {
         
         // Drag an anchor
         if (type == 'pointermove') {
+            currentAnchor.dataset.dragMoved = '1';
+            const handlePos = snappedEditHandlePoint(pos, e.ctrlKey);
+            if (currentAnchor.dataset.role == 'center') {
+                const anchorPos = anchorPoint(currentAnchor);
+                const oldX = Number.parseFloat(currentAnchor.dataset.lastX ?? anchorPos.x);
+                const oldY = Number.parseFloat(currentAnchor.dataset.lastY ?? anchorPos.y);
+                const dx = handlePos.x - oldX;
+                const dy = handlePos.y - oldY;
+                editorData.anchors.forEach(anchor => {
+                    if (anchor !== currentAnchor) {
+                        translateAnchor(anchor, dx, dy);
+                    }
+                });
+                currentAnchor.dataset.lastX = handlePos.x;
+                currentAnchor.dataset.lastY = handlePos.y;
+            }
             // Update coordinates of anchor
-            currentAnchor.setAttributeNS(null, 'cx', pos.x);
-            currentAnchor.setAttributeNS(null, 'cy', pos.y);
+            setAnchorPoint(currentAnchor, handlePos);
+            currentAnchor.dataset.lastX = handlePos.x;
+            currentAnchor.dataset.lastY = handlePos.y;
+            syncOrientedHandles(e.shiftKey);
+            updatePolyCenterAnchor();
             updateEditShape();
+            updateLastAnchorMarker();
+            updateEditRadialGuide(e.ctrlKey);
             return;
         }
 
         // End dragging of an anchor
         if (type == 'pointerup') {
-            if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
-                // Outside of edit area - delete anchor
-                removeAnchor(currentAnchor);
+            const moved = currentAnchor.dataset.dragMoved == '1';
+            const finalPos = moved ? pos : anchorPoint(currentAnchor);
+            if (finalPos.x < 0 || finalPos.y < 0 || finalPos.x >= editorData.bounds.width || finalPos.y >= editorData.bounds.height) {
+                if (editorData.areas[currentAreaId]?.type == 'poly' && currentAnchor.dataset.role != 'center') {
+                    // Outside of edit area - delete polygon anchor
+                    removeAnchor(currentAnchor);
+                }
+                else {
+                    const clampedPoint = {
+                        x: Math.max(0, Math.min(editorData.bounds.width - 1, finalPos.x)),
+                        y: Math.max(0, Math.min(editorData.bounds.height - 1, finalPos.y)),
+                    };
+                    setAnchorPoint(currentAnchor, snappedEditHandlePoint(clampedPoint, e.ctrlKey));
+                    syncOrientedHandles(e.shiftKey);
+                    activateAnchor(currentAnchor);
+                }
             }
             else {
                 // Inside of edit area - make this anchor the 'active' one
                 activateAnchor(currentAnchor);
             }
             updateEditShape();
+            updatePolyCenterAnchor();
+            updateLastAnchorMarker();
             $svg.find('.anchor.dragging').removeClass('dragging');
             svg.releasePointerCapture(e.pointerId);
             setMode('edit');
+            updateEditRadialGuide(e.ctrlKey);
             return;
         }
     }
@@ -749,13 +2242,10 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'move' && $target.hasClass('background')) {
         // Add an area to the selection in move mode
         if (type == 'pointerdown') {
-            // Do nothing if any modifiers except CTRL are pressed
-            if (e.altKey || e.shiftKey) return;
             const id = $target.attr('data-id') ?? '';
             if (id != '' && editorData.areas[id]) {
-                // CTRL key means edit selection
-                if (e.ctrlKey) { 
-                    addToSelection([id], true); 
+                if (e.ctrlKey && !$target.hasClass('selected')) {
+                    addToSelection([id]);
                     return;
                 }
                 if (!$target.hasClass('selected')) {
@@ -767,6 +2257,10 @@ function handleSVGEvent(e) {
                 setMode('move-moving');
                 moveStartPos.x = pos.x;
                 moveStartPos.y = pos.y;
+                moveDelta.x = 0;
+                moveDelta.y = 0;
+                beginMovePreview();
+                updateMovePreview(0, 0, e.altKey, e.ctrlKey);
                 svg.setPointerCapture(e.pointerId);
             }
             return;
@@ -776,33 +2270,37 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'move-moving') {
         // Move all selected areas while in move mode
         if (type == 'pointermove') {
-            // No keyboard modifiers must be pressed
-            if (e.altKey || e.shiftKey || e.ctrlKey) return;
             // Update x and y translation
-            const dx = pos.x - moveStartPos.x;
-            const dy = pos.y - moveStartPos.y;
-            svg.style.setProperty('--move-x', dx + 'px');
-            svg.style.setProperty('--move-y', dy + 'px');
+            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.ctrlKey);
+            moveDelta.x = delta.x;
+            moveDelta.y = delta.y;
+            updateMovePreview(delta.x, delta.y, e.altKey, e.ctrlKey);
             return;
         }
 
         // End moving
         if (type == 'pointerup') {
             svg.releasePointerCapture(e.pointerId);
-            // Get translated x and y
-            const dx = parseInt(svg.style.getPropertyValue('--move-x'));
-            const dy = parseInt(svg.style.getPropertyValue('--move-y'));
+            const delta = constrainedMoveDelta(pos.x - moveStartPos.x, pos.y - moveStartPos.y, e.ctrlKey);
+            const dx = delta.x || moveDelta.x;
+            const dy = delta.y || moveDelta.y;
             // Reset translation
-            svg.style.setProperty('--move-x', 0);
-            svg.style.setProperty('--move-y', 0);
+            clearMovePreview();
             if (pos.x < 0 || pos.y < 0 || pos.x >= editorData.bounds.width || pos.y >= editorData.bounds.height) {
                 // Outside of edit area - do nothing
             }
             else {
                 // Inside of edit area - apply dx and dy
                 log('Move dx:', dx, 'dy:', dy);
-                moveSelection(dx, dy);
+                if (e.altKey && (dx != 0 || dy != 0)) {
+                    duplicateSelection(dx, dy);
+                }
+                else if (dx != 0 || dy != 0) {
+                    moveSelection(dx, dy);
+                }
             }
+            moveDelta.x = 0;
+            moveDelta.y = 0;
             setMode('move');
             return;
         }
@@ -813,11 +2311,13 @@ function handleSVGEvent(e) {
     if (editorData.mode == 'preview') {
         // Toggle an area while in preview mode
         if (type == 'pointerdown' && $target.hasClass('background')) {
-            if ($target.hasClass('selected')) {
-                $target.removeClass('selected');
+            const id = $target.attr('data-id') ?? '';
+            if (!id || !editorData.areas[id]) return;
+            if (editorData.selection.includes(id)) {
+                removeFromSelection([id]);
             }
             else {
-                $target.addClass('selected');
+                addToSelection([id]);
             }
             return;
         }
@@ -828,8 +2328,22 @@ function handleSVGEvent(e) {
 
 //#endregion
 
+function seedShapeAt(id, pos) {
+    const area = editorData.areas[id];
+    if (area.type == 'rect') {
+        area.data = normalizeShapeData('rect', { x: pos.x - 30, y: pos.y - 20, width: 60, height: 40, angle: 0 });
+    }
+    else if (area.type == 'circle') {
+        area.data = normalizeShapeData('circle', { cx: pos.x, cy: pos.y, r: 1 });
+    }
+    else if (area.type == 'ell') {
+        area.data = normalizeShapeData('ell', { cx: pos.x, cy: pos.y, rx: 35, ry: 25, angle: 0 });
+    }
+    updateBackgroundShape(id, true);
+}
+
 function showWhenNoAreas() {
-    const numAreas = editorData && editorData.areas ? Object.keys(editorData.areas) : 0;
+    const numAreas = editorData && editorData.areas ? Object.keys(editorData.areas).length : 0;
     $editor.find('.show-when-no-areas')[numAreas == 0 ? 'show' : 'hide']();
 }
 
@@ -841,25 +2355,91 @@ function showWhenNoAreas() {
  */
 function updateBackgroundShape(id, editing = false) {
     const area = editorData.areas[id];
-
-    if (area.type == 'poly') {
-        // Add a polygon for this area
-        const $bgPoly = $svg.find('polygon[data-id="' + id + '"]')
-        if ($bgPoly.length == 1) {
-            $bgPoly[0].setAttributeNS(null, 'points', area.data ?? '');
-            $bgPoly[0].classList[editing ? 'add' : 'remove']('editing');
-        }
-        else {
-            const bgPoly = createSVG('polygon', { 
-                points: area.data ?? '',
-                'class': 'shape background',
-                'data-id': id,
-            });
-            bgPoly.classList[editing ? 'add' : 'remove']('editing');
-            svg.prepend(bgPoly);
-        }
+    updateAreaRowState(id);
+    const $bg = $svg.find('.background[data-id="' + id + '"]');
+    if ($bg.length == 1 && $bg[0].tagName.toLowerCase() == shapeTag(area.type)) {
+        setShapeAttributes($bg[0], area.type, area.data);
+        $bg[0].classList[editing ? 'add' : 'remove']('editing');
+        applyDesignerShapeStyle($bg[0], area, editorData.selection.includes(id) ? 'selected' : (id == hoverAreaId ? 'hover' : 'regular'));
     }
-    // TODO - other shapes
+    else {
+        $bg.remove();
+        const bg = createShapeElement(area.type, area.data, {
+            'class': 'shape background',
+            'data-id': id,
+        });
+        bg.classList[editing ? 'add' : 'remove']('editing');
+        applyDesignerShapeStyle(bg, area, 'regular');
+        svg.prepend(bg);
+    }
+    updateStyleSample(id);
+}
+
+function shapeTag(type) {
+    return type == 'rect' ? 'rect' : (type == 'circle' ? 'circle' : (type == 'ell' ? 'ellipse' : 'polygon'));
+}
+
+function applyDesignerShapeStyle(el, area, state) {
+    const style = getAreaStyle(area)[state] ?? STYLE_DEFAULTS[state];
+    el.style.fill = style.fill;
+    el.style.stroke = style.stroke;
+    el.style.fillOpacity = style.fillOpacity;
+    el.style.strokeOpacity = style.strokeOpacity;
+    el.style.strokeWidth = style.strokeWidth;
+}
+
+function updateStyleSample(id) {
+    const area = editorData.areas[id] ?? null;
+    if (!area) return;
+    updateAreaRowState(id);
+    const style = getAreaStyle(area);
+    const $sample = $('tr[data-area-id="' + id + '"]').find('.area-style-sample');
+    $sample.empty();
+    ['regular', 'hover', 'selected'].forEach(state => {
+        const $swatch = $('<span></span>').addClass('area-style-state-swatch');
+        applyStyleToSwatch($swatch, style[state]);
+        $sample.append($swatch);
+    });
+    updateAreaModeSample(id);
+}
+
+function updateAreaModeSample(id) {
+    const area = editorData.areas[id] ?? null;
+    if (!area) return;
+    const mode = areaModeSampleDisplay(area.mode);
+    const $button = $('tr[data-area-id="' + id + '"]').find('.area-mode-toggle');
+    $button
+        .removeClass('eim-area-mode-two-way eim-area-mode-to-target eim-area-mode-from-target')
+        .addClass(mode.className)
+        .attr('title', mode.title)
+        .attr('aria-label', mode.title);
+    $button.find('i').attr('class', mode.icon).attr('aria-hidden', 'true');
+}
+
+function areaModeSampleDisplay(mode) {
+    const displays = {
+        '2-way': {
+            icon: 'fa-solid fa-exchange-alt',
+            className: 'eim-area-mode-two-way',
+            title: tt('tooltip_mode_two_way', 'Two-way update'),
+        },
+        'to-target': {
+            icon: 'fa-solid fa-right-to-bracket',
+            className: 'eim-area-mode-to-target',
+            title: tt('tooltip_mode_to_target', 'Update target from image only'),
+        },
+        'from-target': {
+            icon: 'fa-solid fa-right-from-bracket fa-rotate-180',
+            className: 'eim-area-mode-from-target',
+            title: tt('tooltip_mode_from_target', 'Update image from target only'),
+        },
+    };
+    return displays[mode] ?? displays['2-way'];
+}
+
+function nextAreaMode(mode) {
+    const idx = UPDATE_MODES.indexOf(mode);
+    return UPDATE_MODES[(idx + 1) % UPDATE_MODES.length];
 }
 
 /**
@@ -874,12 +2454,16 @@ function clearCurrentArea() {
  * @param {string} id 
  * @returns void
  */
-function setCurrentEditArea(id) {
+function setCurrentEditArea(id, scrollCanvas = false) {
     hideTooltip();
-    if (currentAreaId == id) return;
+    if (currentAreaId == id) {
+        if (id) scrollAreaRowIntoView(id);
+        if (id && scrollCanvas) scrollCurrentAreaCenterIntoView();
+        return;
+    }
     if (currentAreaId) {
         storeShapeData(currentAreaId);
-        $svg.find('polygon.background').each(function() {
+        $svg.find('.background').each(function() {
             if (this.getAttribute('data-id') == id) {
                 this.classList.add('editing');
             }
@@ -892,47 +2476,158 @@ function setCurrentEditArea(id) {
     }
     currentAreaId = id;
     const area = editorData.areas[currentAreaId] ?? null;
-    if (area == null) return;
+    if (area == null) {
+        updateStyleControls();
+        return;
+    }
 
     // Set edit mode and update shape
     setShapeType(area.type);
+    setSelectedStyleName(area.style ?? DEFAULT_STYLE_NAME);
     // Update table
     $('tr[data-area-id="' + currentAreaId + '"]').find('input[name=active-area]').prop('checked', true);
+    scrollAreaRowIntoView(currentAreaId);
     // Update SVG
     updateBackgroundShape(currentAreaId, true);
     clearEditAnchors();
     // Add new anchors
     try {
         createEditShape(area);
-        if (typeof area.data == 'string' && area.data != '') {
-            for (let coords of area.data.split(' ')) {
-                const pos = coords.split(',');
-                const x = Number.parseInt(pos[0]);
-                const y = Number.parseInt(pos[1]);
-                const anchor = createSVG('circle', {
-                    cx: x,
-                    cy: y,
-                    r: 4 / editorData.zoom,
-                    'class': 'anchor',
-                });
-                svg.appendChild(anchor);
-                editorData.anchors.push(anchor);
-            }
+        const points = anchorsFromShape(area.type, area.data);
+        for (let point of points) {
+            const anchor = createAnchor(point);
+            svg.appendChild(anchor);
+            editorData.anchors.push(anchor);
         }
-        activateAnchor(null);
+        if (area.type == 'poly') {
+            const vertices = editorData.anchors.filter(anchor => anchor.dataset.role != 'center');
+            lastVertexAnchor = vertices[vertices.length - 1] ?? null;
+        }
+        activateAnchor(null, false);
         updateEditShape();
+        updateStyleControls();
+        updateEditRadialGuide(ctrlKeyDown);
+        if (scrollCanvas) scrollCurrentAreaCenterIntoView();
     }
     catch (ex) {
-        showToast('Failed to initialize area. Check console for details.', true);
+        showToast(tt('toast_failed_initialize_area', 'Failed to initialize area. Check console for details.'), 'error');
         error(ex);
     }
     log('Activated area:', area);
 }
 
+function scrollCurrentAreaCenterIntoView() {
+    const container = $editor.find('#eim-container')[0];
+    if (!container || !currentAreaId || !editorData.areas[currentAreaId]) return;
+    const center = getCurrentAreaCenterScreenPoint();
+    if (!center) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const viewLeft = containerRect.left;
+    const viewTop = containerRect.top;
+    const viewRight = viewLeft + container.clientWidth;
+    const viewBottom = viewTop + container.clientHeight;
+    const isVisible = center.x >= viewLeft && center.x <= viewRight && center.y >= viewTop && center.y <= viewBottom;
+    if (isVisible) return;
+
+    const maxLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+    const maxTop = Math.max(0, container.scrollHeight - container.clientHeight);
+    const targetLeft = container.scrollLeft + (center.x - viewLeft) - (container.clientWidth / 2);
+    const targetTop = container.scrollTop + (center.y - viewTop) - (container.clientHeight / 2);
+    container.scrollLeft = clamp(targetLeft, 0, maxLeft);
+    container.scrollTop = clamp(targetTop, 0, maxTop);
+}
+
+function getCurrentAreaCenterScreenPoint() {
+    const centerAnchor = findAnchorByRole('center');
+    if (centerAnchor) {
+        const rect = centerAnchor.getBoundingClientRect();
+        return {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2,
+        };
+    }
+
+    const area = editorData.areas[currentAreaId] ?? null;
+    const svgRect = svg ? svg.getBoundingClientRect() : null;
+    if (!area || !svgRect) return null;
+    const center = getAreaCenter(area);
+    return {
+        x: svgRect.left + center.x * editorData.zoom,
+        y: svgRect.top + center.y * editorData.zoom,
+    };
+}
+
+function getAreaCenter(area) {
+    if (area.type == 'poly') return polygonCenterOfMass(polyToPoints(area.data));
+    return getShapeCenter(normalizeShapeData(area.type, area.data));
+}
+
+function scrollAreaRowIntoView(id) {
+    const container = $editor.find('.area-assignments-table')[0];
+    const row = $editor.find('tr[data-area-id="' + id + '"]')[0];
+    if (!container || !row) return;
+    const headerHeight = $editor.find('table.eim-areas thead').outerHeight() || 0;
+    const rowTop = row.offsetTop;
+    const rowBottom = rowTop + row.offsetHeight;
+    const viewTop = container.scrollTop + headerHeight;
+    const viewBottom = container.scrollTop + container.clientHeight;
+    if (rowTop < viewTop) {
+        container.scrollTop = Math.max(0, rowTop - headerHeight);
+    }
+    else if (rowBottom > viewBottom) {
+        container.scrollTop = rowBottom - container.clientHeight;
+    }
+}
+
+function anchorsFromShape(type, data) {
+    data = normalizeShapeData(type, data);
+    if (type == 'poly') {
+        if (!data) return [];
+        const points = polyToPoints(data);
+        if (points.length >= 2) {
+            points.push(Object.assign(polygonCenterOfMass(points), { role: 'center' }));
+        }
+        return points;
+    }
+    if (type == 'rect') {
+        if (!data.width || !data.height) return [];
+        const c = getShapeCenter(data);
+        const widthPoint = pointFromAngle(c, data.angle, data.width / 2);
+        const heightPoint = pointFromAngle(c, data.angle + 90, data.height / 2);
+        return [
+            { x: c.x, y: c.y, role: 'center' },
+            Object.assign(widthPoint, { role: 'width' }),
+            Object.assign(heightPoint, { role: 'height' }),
+            Object.assign(addVectors(c, { x: widthPoint.x - c.x, y: widthPoint.y - c.y }, { x: heightPoint.x - c.x, y: heightPoint.y - c.y }), { role: 'corner' }),
+        ];
+    }
+    if (type == 'circle') {
+        if (!data.r) return [];
+        return [
+            { x: data.cx, y: data.cy, role: 'center' },
+            { x: data.cx + data.r, y: data.cy, role: 'radius' },
+        ];
+    }
+    if (type == 'ell') {
+        if (!data.rx || !data.ry) return [];
+        const c = { x: data.cx, y: data.cy };
+        const rxPoint = pointFromAngle(c, data.angle, data.rx);
+        const ryPoint = pointFromAngle(c, data.angle + 90, data.ry);
+        return [
+            { x: c.x, y: c.y, role: 'center' },
+            Object.assign(rxPoint, { role: 'radius-x' }),
+            Object.assign(ryPoint, { role: 'radius-y' }),
+            Object.assign(addVectors(c, { x: rxPoint.x - c.x, y: rxPoint.y - c.y }, { x: ryPoint.x - c.x, y: ryPoint.y - c.y }), { role: 'corner' }),
+        ];
+    }
+    return [];
+}
+
 function handleEditorActionEvent(e) {
     const action = $(e.target).attr('data-action') ? $(e.target).attr('data-action') : $(e.target).parents('[data-action]').attr('data-action');
     const $row = $(e.target).is('tr') ? $(e.target) : $(e.target).parents('tr[data-area-id]');
-    executeEditorAction(action, $row);
+    executeEditorAction(action, $row, e);
 }
 
 function toggleSelectAll() {
@@ -941,21 +2636,32 @@ function toggleSelectAll() {
     const numSelected = $('tr[data-area-id] input[type="checkbox"]:checked').length;
     if (numAreas > numSelected) {
         // Select all
-        $('tr[data-area-id] input[type="checkbox"]').prop('checked', true);
-        if (editorData.mode == 'edit') {
-            
-        }
+        clearSelection(Object.keys(editorData.areas));
     }
     else if (numSelected == numAreas) {
         // Select none
-        $('tr[data-area-id] input[type="checkbox"]').prop('checked', false);
+        clearSelection([]);
     }
 }
 
 function setShapeType(type) {
+    if (!SHAPE_TYPES.includes(type)) return;
+    if (currentAreaId && editorData.areas[currentAreaId] && editorData.areas[currentAreaId].type != type) {
+        const area = editorData.areas[currentAreaId];
+        if (areaHasData(area) && !skipShapeChangeConfirm()) {
+            showShapeChangeDialog(type);
+            return;
+        }
+        applyShapeTypeChange(type);
+        return;
+    }
+    setShapeTypeButtonState(type);
+}
+
+function setShapeTypeButtonState(type) {
     _shapeType = type;
     log('Shape type set to: ' + _shapeType);
-    ['ell', 'rect', 'poly'].forEach(t => {
+    SHAPE_TYPES.forEach(t => {
         $('button[data-action="type-' + t + '"]').addClass('btn-outline-secondary').removeClass('btn-secondary');
         if (t == _shapeType) {
             $('button[data-action="type-' + t + '"]').removeClass('btn-outline-secondary').addClass('btn-secondary');
@@ -963,8 +2669,96 @@ function setShapeType(type) {
     });
 }
 
+function applyShapeTypeChange(type) {
+    if (!currentAreaId || !editorData.areas[currentAreaId] || !SHAPE_TYPES.includes(type)) return;
+    storeShapeData(currentAreaId);
+    const area = editorData.areas[currentAreaId];
+    const fromType = area.type;
+    area.data = areaHasData(area) ? morphShapeData(fromType, area.data, type) : normalizeShapeData(type, null);
+    area.type = type;
+    setShapeTypeButtonState(type);
+    $svg.find('[data-id="' + currentAreaId + '"]').remove();
+    clearEditAnchors();
+    updateBackgroundShape(currentAreaId, true);
+    createEditShape(area);
+    const points = anchorsFromShape(area.type, area.data);
+    for (let point of points) {
+        const anchor = createAnchor(point);
+        svg.appendChild(anchor);
+        editorData.anchors.push(anchor);
+    }
+    if (area.type == 'poly') {
+        const vertices = editorData.anchors.filter(anchor => anchor.dataset.role != 'center');
+        lastVertexAnchor = vertices[vertices.length - 1] ?? null;
+    }
+    activateAnchor(null, false);
+    updateEditShape();
+    updateEditRadialGuide(ctrlKeyDown);
+}
+
+function skipShapeChangeConfirm() {
+    try {
+        return window.localStorage.getItem(SHAPE_CHANGE_CONFIRM_KEY) == '1';
+    }
+    catch (_) {
+        return false;
+    }
+}
+
+function showShapeChangeDialog(type) {
+    pendingShapeChangeType = type;
+    const from = shapeLabel(editorData.areas[currentAreaId].type);
+    const to = shapeLabel(type);
+    const $dialog = $editor.find('.eim-shape-change-dialog');
+    $dialog.find('p').text(tt('dialog_shape_change_message', '{from} will be converted to {to}. Existing placement will be preserved as closely as possible.', { from: from, to: to }));
+    $dialog.find('[data-eim-shape-change-skip]').prop('checked', false);
+    $dialog.css('display', 'flex');
+}
+
+function hideShapeChangeDialog() {
+    pendingShapeChangeType = '';
+    $editor.find('.eim-shape-change-dialog').hide();
+}
+
+function confirmShapeChange() {
+    const type = pendingShapeChangeType;
+    const $dialog = $editor.find('.eim-shape-change-dialog');
+    if ($dialog.find('[data-eim-shape-change-skip]').prop('checked')) {
+        try {
+            window.localStorage.setItem(SHAPE_CHANGE_CONFIRM_KEY, '1');
+        }
+        catch (_) { }
+    }
+    hideShapeChangeDialog();
+    applyShapeTypeChange(type);
+}
+
+function updateAreaRowState(id) {
+    const area = editorData.areas[id] ?? null;
+    const $row = $editor.find('tr[data-area-id="' + id + '"]');
+    const missingShape = !!area && !areaHasData(area);
+    $row.toggleClass('eim-area-missing-shape', missingShape);
+}
+
+function shapeLabel(type) {
+    return {
+        circle: tt('shape_circle', 'Circle'),
+        ell: tt('shape_ellipse', 'Ellipse'),
+        rect: tt('shape_rectangle', 'Rectangle'),
+        poly: tt('shape_polygon', 'Polygon'),
+    }[type] ?? tt('shape_unknown', 'Shape');
+}
+
 function getShapeType() {
     return _shapeType;
+}
+
+function areaHasData(area) {
+    if (area.type == 'poly') return typeof area.data == 'string' && area.data.trim().split(/\s+/).filter(point => /^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$/.test(point)).length >= 3;
+    if (area.type == 'rect') return area.data && area.data.width > 0 && area.data.height > 0;
+    if (area.type == 'circle') return area.data && area.data.r > 0;
+    if (area.type == 'ell') return area.data && area.data.rx > 0 && area.data.ry > 0;
+    return false;
 }
 
 function addNewArea() {
@@ -973,21 +2767,25 @@ function addNewArea() {
         type: getShapeType(),
         mode: '2-way',
         label: '',
+        tooltip: '',
         target: '',
-        data: ''
+        style: getSelectedStyleName(),
+        data: normalizeShapeData(getShapeType(), null)
     };
     return uuid;
 }
 
-function cloneArea(origId) {
+function cloneArea(origId, dx = 10, dy = 10) {
     const uuid = generateUUID();
     const orig = editorData.areas[origId];
     editorData.areas[uuid] = {
         type: orig.type,
         mode: orig.mode,
         label: '',
+        tooltip: orig.tooltip ?? '',
         target: '',
-        data: applyTranslation(orig.data, 10, 10)
+        style: normalizeStyleReference(orig.style ?? DEFAULT_STYLE_NAME),
+        data: translateShapeData(orig.type, orig.data, dx, dy)
     };
     return uuid;
 }
@@ -998,16 +2796,293 @@ function addTableRow(id, afterId = '') {
     const $select = $row.find('select');
     $select.html($selectTemplate.html());
     $select.val(editorData.areas[id].target ?? '') ;
-    // @ts-ignore
-    $select.selectpicker();
     if (afterId == '') {
         $editor.find('tbody.area-list').append($row);
     }
     else {
         $editor.find('tr[data-area-id="' + afterId + '"]').after($row);
     }
+    sortAssignableOptions($select);
+    initializeAssignableSelect($select);
     // Add background shape
     updateBackgroundShape(id);
+}
+
+function initializeAssignableSelect($select) {
+    $select.addClass('eim-target-native-select').attr('tabindex', '-1').hide();
+    const $picker = $('<div></div>').addClass('eim-target-picker');
+    const $button = $('<button></button>')
+        .attr('type', 'button')
+        .addClass('btn btn-light btn-sm eim-target-picker-toggle')
+        .append($('<span></span>').addClass('eim-target-picker-value'))
+        .append($('<i></i>').addClass('fa-solid fa-caret-down eim-target-picker-caret'));
+    $picker.append($button);
+    $select.after($picker);
+    $button.on('click', function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        openTargetPicker($select);
+    });
+    updateAssignableSelectVisuals($select);
+}
+
+function activateAreaForAssignableSelect($select) {
+    const id = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    if (!id || currentAreaId == id || !editorData.areas[id]) return;
+    setMode('edit');
+    setCurrentEditArea(id, true);
+}
+
+function updateAssignableSelectVisuals($select) {
+    renderTargetPickerButton($select);
+    if ($targetPickerMenu.length && $targetPickerMenu.data('select') === $select[0]) {
+        renderTargetPickerOptions($select, $targetPickerMenu);
+    }
+}
+
+function sortAssignableOptions($select) {
+    const currentValue = ($select.val() ?? '').toString();
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const usedTargets = assignedTargets(currentId);
+    const original = $select.find('option').get();
+    const sorted = original
+        .map((option, idx) => ({ option: option, meta: assignableOptionSortMeta($(option), usedTargets, idx) }))
+        .sort((a, b) => compareAssignableSortMeta(a.meta, b.meta))
+        .map(item => item.option);
+    const changed = sorted.some((option, idx) => option !== original[idx]);
+    if (changed) {
+        $select.children().remove();
+        sorted.forEach(option => $select.append(option));
+        $select.val(currentValue);
+    }
+    return changed;
+}
+
+function assignableOptionSortMeta($option, usedTargets, idx) {
+    const code = ($option.val() ?? '').toString();
+    return {
+        blank: code == '',
+        used: !!code && usedTargets.has(code),
+        field: ($option.attr('data-eim-target-field') ?? '').toString(),
+        label: ($option.attr('data-eim-target-label') ?? $option.text()).toString(),
+        idx: idx,
+    };
+}
+
+function compareAssignableSortMeta(a, b) {
+    if (!a || !b) return 0;
+    if (a.blank != b.blank) return a.blank ? -1 : 1;
+    if (a.used != b.used) return a.used ? 1 : -1;
+    const fieldCompare = a.field.localeCompare(b.field, undefined, { sensitivity: 'base', numeric: true });
+    if (fieldCompare != 0) return fieldCompare;
+    const labelCompare = a.label.localeCompare(b.label, undefined, { sensitivity: 'base', numeric: true });
+    if (labelCompare != 0) return labelCompare;
+    return a.idx - b.idx;
+}
+
+function updateAllAssignableSelectVisuals() {
+    $editor.find('select.assignables').each(function() {
+        updateAssignableSelectVisuals($(this));
+    });
+}
+
+function openTargetPicker($select) {
+    closeTargetPicker();
+    activateAreaForAssignableSelect($select);
+    sortAssignableOptions($select);
+    const $button = getTargetPickerButton($select);
+    if (!$button.length) return;
+    const $menu = $('<div></div>')
+        .addClass('eim-target-picker-menu remove-on-close')
+        .data('select', $select[0]);
+    const $search = $('<input>')
+        .attr('type', 'search')
+        .addClass('form-control form-control-sm mb-1 eim-target-picker-search')
+        .attr('autocomplete', 'off');
+    const $list = $('<div></div>').addClass('eim-target-picker-list');
+    $menu.append($search).append($list);
+    $menu.on('click', function(event) {
+        event.stopPropagation();
+    });
+    $search.on('input', function() {
+        filterTargetPickerOptions($menu, $(this).val());
+    });
+    $search.on('keydown', function(event) {
+        if (event.key == 'Escape') {
+            closeTargetPicker();
+            $button.trigger('focus');
+        }
+        else if (event.key == 'ArrowDown') {
+            event.preventDefault();
+            $menu.find('.eim-target-picker-item:visible').first().trigger('focus');
+        }
+    });
+    $editor.append($menu);
+    $targetPickerMenu = $menu;
+    renderTargetPickerOptions($select, $menu);
+    positionTargetPickerMenu($button, $menu);
+    $(document).off('mousedown.eimTargetPicker').on('mousedown.eimTargetPicker', function(event) {
+        if ($(event.target).closest('.eim-target-picker-menu, .eim-target-picker').length == 0) closeTargetPicker();
+    });
+    $search.trigger('focus');
+}
+
+function closeTargetPicker() {
+    if ($targetPickerMenu.length) {
+        $targetPickerMenu.remove();
+        $targetPickerMenu = $();
+    }
+    $(document).off('mousedown.eimTargetPicker');
+}
+
+function renderTargetPickerButton($select) {
+    const $button = getTargetPickerButton($select);
+    if (!$button.length) return;
+    const $selected = $select.find('option:selected').first();
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const isUsed = isOptionUsed($selected, currentId);
+    const $content = $('<span></span>').html($selected.attr('data-content') || $selected.text());
+    decorateTargetOption($content, isUsed);
+    $button.find('.eim-target-picker-value')
+        .toggleClass('eim-target-picker-value-empty', (($selected.val() ?? '').toString() == ''))
+        .html($content.html());
+}
+
+function renderTargetPickerOptions($select, $menu) {
+    const currentValue = ($select.val() ?? '').toString();
+    const currentId = $select.closest('tr[data-area-id]').attr('data-area-id') ?? '';
+    const $list = $menu.find('.eim-target-picker-list');
+    $list.empty();
+    $select.find('option').each(function() {
+        const $option = $(this);
+        const value = ($option.val() ?? '').toString();
+        const $content = $('<span></span>').html($option.attr('data-content') || $option.text());
+        decorateTargetOption($content, isOptionUsed($option, currentId));
+        const $item = $('<button></button>')
+            .attr('type', 'button')
+            .addClass('eim-target-picker-item')
+            .toggleClass('active', value == currentValue)
+            .attr('data-value', value)
+            .attr('data-search', targetPickerSearchText($option))
+            .html($content.html());
+        $item.on('click', function(event) {
+            event.preventDefault();
+            event.stopPropagation();
+            $select.val(value).trigger('change');
+            closeTargetPicker();
+            getTargetPickerButton($select).trigger('focus');
+        });
+        $item.on('keydown', function(event) {
+            handleTargetPickerItemKey(event, $menu);
+        });
+        $list.append($item);
+    });
+}
+
+function handleTargetPickerItemKey(event, $menu) {
+    if (event.key == 'Escape') {
+        closeTargetPicker();
+        return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const $items = $menu.find('.eim-target-picker-item:visible');
+    const index = $items.index(event.currentTarget);
+    let nextIndex = index;
+    if (event.key == 'ArrowDown') nextIndex = Math.min($items.length - 1, index + 1);
+    if (event.key == 'ArrowUp') nextIndex = Math.max(0, index - 1);
+    if (event.key == 'Home') nextIndex = 0;
+    if (event.key == 'End') nextIndex = $items.length - 1;
+    $items.eq(nextIndex).trigger('focus');
+}
+
+function filterTargetPickerOptions($menu, query) {
+    const needle = (query ?? '').toString().trim().toLowerCase();
+    $menu.find('.eim-target-picker-item').each(function() {
+        const haystack = ($(this).attr('data-search') ?? '').toString();
+        $(this).toggle(needle == '' || haystack.includes(needle));
+    });
+}
+
+function targetPickerSearchText($option) {
+    return [
+        $option.attr('data-eim-target-field') ?? '',
+        $option.attr('data-eim-target-label') ?? '',
+        $option.text() ?? '',
+    ].join(' ').toLowerCase();
+}
+
+function positionTargetPickerMenu($button, $menu) {
+    const rect = $button[0].getBoundingClientRect();
+    const width = Math.max(220, rect.width);
+    const maxHeight = Math.min(320, Math.max(160, window.innerHeight - 24));
+    const below = window.innerHeight - rect.bottom - 8;
+    const above = rect.top - 8;
+    const openAbove = below < 220 && above > below;
+    const left = clamp(rect.left, 8, Math.max(8, window.innerWidth - width - 8));
+    const top = openAbove
+        ? clamp(rect.top - Math.min(maxHeight, above) - 4, 8, window.innerHeight - 80)
+        : clamp(rect.bottom + 4, 8, window.innerHeight - 80);
+    $menu.css({
+        left: left + 'px',
+        top: top + 'px',
+        width: width + 'px',
+        maxHeight: maxHeight + 'px',
+    });
+}
+
+function getTargetPickerButton($select) {
+    return $select.siblings('.eim-target-picker').find('.eim-target-picker-toggle').first();
+}
+
+function isOptionUsed($option, currentId) {
+    const code = ($option.val() ?? '').toString();
+    return !!code && assignedTargets(currentId).has(code);
+}
+
+function targetCodeClass(code) {
+    return 'eim-target-code-' + (code ?? '').toString().replace(/[^A-Za-z0-9_-]/g, char => {
+        return '_' + char.charCodeAt(0).toString(16) + '_';
+    });
+}
+
+function decorateTargetOption($content, isUsed) {
+    if (!$content || !$content.length) return;
+    $content.toggleClass('eim-target-used-option', isUsed);
+    $content.find('.eim-target-used-marker').remove();
+    const $badge = $content.find('.badge').not('.eim-target-used-marker').first();
+    $badge
+        .removeClass('badge-dark badge-secondary badge-warning eim-target-used-badge')
+        .addClass(isUsed ? 'badge-warning eim-target-used-badge' : 'badge-secondary');
+    if (isUsed) {
+        const $target = $content.find('.eim-target-option').first();
+        const $text = $content.find('a .text').first();
+        const $appendTo = $target.length ? $target : ($text.length ? $text : $content);
+        $appendTo.append(usedTargetMarkerContent());
+    }
+}
+
+function usedTargetMarkerContent() {
+    const $marker = $('<span></span>')
+        .addClass('badge badge-light eim-target-used-marker')
+        .attr('title', tt('tooltip_target_already_assigned', 'Already assigned to another shape'))
+        .append($('<i></i>').addClass('fa-solid fa-check'))
+        .append(document.createTextNode(' ' + tt('target_used_marker', 'used')));
+    return $marker;
+}
+
+function cleanupAssignableSelectpickerContainers() {
+    closeTargetPicker();
+}
+
+function assignedTargets(excludeId = '') {
+    const targets = new Set();
+    Object.keys(editorData.areas ?? {}).forEach(id => {
+        if (id == excludeId) return;
+        const area = editorData.areas[id];
+        if (area && area.target && areaHasData(area)) targets.add(area.target);
+    });
+    return targets;
 }
 
 /**
@@ -1018,26 +3093,458 @@ function togglePreview() {
     setMode(editorData.mode == 'preview' ? 'edit' : 'preview');
 }
 
+function setStyleState(state) {
+    if (!['regular', 'hover', 'selected'].includes(state)) return;
+    currentStyleState = state;
+    ['regular', 'hover', 'selected'].forEach(s => {
+        const $btn = $('.eim-style-state[data-action="style-' + s + '"]');
+        $btn.toggleClass('active', s == state);
+    });
+    updateStyleControls();
+}
+
+function updateStyleSelector() {
+    const $select = $editor.find('[data-action="style-select"]');
+    const selected = getSelectedStyleName();
+    $select.empty();
+    Object.keys(editorData.styles).forEach(name => {
+        $('<option></option>').attr('value', name).text(name).appendTo($select);
+    });
+    if (!editorData.styles[selected]) {
+        $select.val(DEFAULT_STYLE_NAME);
+    }
+    else {
+        $select.val(selected);
+    }
+    updateStyleDeleteButtonState();
+}
+
+function getSelectedStyleName() {
+    const selected = normalizeStyleName($editor.find('[data-action="style-select"]').val());
+    return selected && editorData.styles[selected] ? selected : DEFAULT_STYLE_NAME;
+}
+
+function setSelectedStyleName(name) {
+    name = normalizeStyleName(name);
+    if (!name || !editorData.styles[name]) name = DEFAULT_STYLE_NAME;
+    $editor.find('[data-action="style-select"]').val(name);
+}
+
+function updateStyleControls() {
+    if (!editorData) return;
+    const area = editorData && currentAreaId ? editorData.areas[currentAreaId] : null;
+    if (area) setSelectedStyleName(area.style ?? DEFAULT_STYLE_NAME);
+    updateStyleSelector();
+    const style = getStyleByName(getSelectedStyleName());
+    const stateStyle = style[currentStyleState];
+    ['regular', 'hover', 'selected'].forEach(state => {
+        applyStyleToSwatch($editor.find('[data-style-state-preview="' + state + '"]'), style[state]);
+    });
+    for (const prop of ['fill', 'stroke', 'fillOpacity', 'strokeOpacity', 'strokeWidth']) {
+        $editor.find('[data-style-prop="' + prop + '"]').val(stateStyle[prop]);
+    }
+    updateStyleDeleteButtonState();
+    updateModeButtons();
+}
+
+function updateStyleDeleteButtonState() {
+    if (!editorData) return;
+    const canDelete = Object.keys(editorData.styles ?? {}).length > 1;
+    const $button = $editor.find('[data-action="style-delete-start"]');
+    const $wrapper = $editor.find('[data-style-delete-wrapper]');
+    $button.prop('disabled', !canDelete);
+    $wrapper.attr('title', canDelete ? tt('tooltip_delete_style', 'Delete selected style') : tt('tooltip_delete_style_disabled', 'The last remaining style cannot be deleted'));
+}
+
+function applyStyleToSwatch($swatch, style) {
+    $swatch.css({
+        backgroundColor: hexToRgba(style.fill, style.fillOpacity),
+        borderColor: hexToRgba(style.stroke, style.strokeOpacity),
+        borderWidth: Math.max(1, cleanNumber(style.strokeWidth)) + 'px',
+        borderStyle: 'solid',
+    });
+}
+
+function hexToRgba(hex, opacity) {
+    const color = cleanColor(hex, '#000000').replace('#', '');
+    const r = parseInt(color.substring(0, 2), 16);
+    const g = parseInt(color.substring(2, 4), 16);
+    const b = parseInt(color.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${cleanOpacity(opacity, 1)})`;
+}
+
+function applyStyleChange(prop, value) {
+    const name = getSelectedStyleName();
+    const style = getStyleByName(name);
+    if (prop == 'fill' || prop == 'stroke') {
+        style[currentStyleState][prop] = cleanColor(value, style[currentStyleState][prop]);
+    }
+    else if (prop == 'fillOpacity' || prop == 'strokeOpacity') {
+        style[currentStyleState][prop] = cleanOpacity(value, style[currentStyleState][prop]);
+    }
+    else if (prop == 'strokeWidth') {
+        style[currentStyleState][prop] = Math.max(0, Math.min(20, cleanNumber(value, style[currentStyleState][prop])));
+    }
+    editorData.styles[name] = style;
+    updateAreasUsingStyle(name);
+    updateStyleControls();
+}
+
+function applyStyleToSelected() {
+    const name = getSelectedStyleName();
+    for (const id of editorData.selection) {
+        if (!editorData.areas[id]) continue;
+        editorData.areas[id].style = name;
+        updateBackgroundShape(id, id == currentAreaId);
+    }
+    updateStyleControls();
+}
+
+function copyStyleState() {
+    styleClipboard = Object.assign({}, getStyleByName(getSelectedStyleName())[currentStyleState]);
+}
+
+function pasteStyleState() {
+    if (!styleClipboard) return;
+    const name = getSelectedStyleName();
+    const style = getStyleByName(name);
+    style[currentStyleState] = Object.assign({}, styleClipboard);
+    editorData.styles[name] = style;
+    updateAreasUsingStyle(name);
+    updateStyleControls();
+}
+
+function syncStyleStates() {
+    const name = getSelectedStyleName();
+    const style = getStyleByName(name);
+    const source = Object.assign({}, style[currentStyleState]);
+    ['regular', 'hover', 'selected'].forEach(state => {
+        style[state] = Object.assign({}, source);
+    });
+    editorData.styles[name] = style;
+    updateAreasUsingStyle(name);
+    updateStyleControls();
+}
+
+function updateAreasUsingStyle(name) {
+    Object.keys(editorData.areas).forEach(id => {
+        if (getStyleNameForArea(editorData.areas[id]) == name) {
+            updateBackgroundShape(id, id == currentAreaId);
+        }
+    });
+}
+
+function assignSelectedStyle(name, ids) {
+    name = normalizeStyleName(name);
+    if (!name || !editorData.styles[name]) return;
+    ids.forEach(id => {
+        if (!editorData.areas[id]) return;
+        editorData.areas[id].style = name;
+        updateBackgroundShape(id, id == currentAreaId);
+    });
+    updateStyleControls();
+}
+
+function showStylePanel() {
+    $editor.find('.eim-style-panel-toggle').hide();
+    $editor.find('.eim-style-panel').show();
+    updateStyleControls();
+}
+
+function hideStylePanel() {
+    hideNewStyleInput();
+    $editor.find('.eim-style-panel').hide();
+    $editor.find('.eim-style-panel-toggle').show();
+}
+
+function showNewStyleInput() {
+    const base = uniqueStyleName(tt('style_name_base', 'style'));
+    const $panel = $editor.find('.eim-style-new');
+    $panel.css('display', 'flex');
+    $panel.find('[data-style-new-name]').val(base).trigger('focus').trigger('select');
+}
+
+function hideNewStyleInput() {
+    $editor.find('.eim-style-new').hide();
+}
+
+function addNamedStyle() {
+    const $input = $editor.find('[data-style-new-name]');
+    const name = normalizeStyleName($input.val());
+    if (!name) {
+        showToast(tt('toast_enter_style_name', 'Enter a style name.'), 'warning');
+        return;
+    }
+    if (editorData.styles[name]) {
+        showToast(tt('toast_style_name_exists', 'A style with that name already exists.'), 'warning');
+        return;
+    }
+    editorData.styles[name] = getStyleByName(getSelectedStyleName());
+    hideNewStyleInput();
+    updateStyleSelector();
+    setSelectedStyleName(name);
+    const ids = currentAreaId ? [currentAreaId] : editorData.selection;
+    if (ids.length) assignSelectedStyle(name, ids);
+    updateStyleControls();
+}
+
+function startDeleteSelectedStyle() {
+    const name = getSelectedStyleName();
+    const styleNames = Object.keys(editorData.styles);
+    if (styleNames.length <= 1) {
+        return;
+    }
+    const assignedIds = getAreasUsingStyle(name);
+    if (assignedIds.length == 0) {
+        deleteStyle(name, styleNames.find(styleName => styleName != name) ?? DEFAULT_STYLE_NAME);
+        return;
+    }
+    showStyleDeleteDialog(name, assignedIds.length);
+}
+
+function getAreasUsingStyle(name) {
+    return Object.keys(editorData.areas).filter(id => getStyleNameForArea(editorData.areas[id]) == name);
+}
+
+function showStyleDeleteDialog(name, assignedCount) {
+    pendingStyleDeleteName = name;
+    const $dialog = $editor.find('.eim-style-delete-dialog');
+    const $select = $dialog.find('[data-eim-style-delete-reassign]');
+    $select.empty();
+    Object.keys(editorData.styles).forEach(styleName => {
+        if (styleName == name) return;
+        $('<option></option>').attr('value', styleName).text(styleName).appendTo($select);
+    });
+    $dialog.find('[data-eim-style-delete-message]').text(tt('dialog_style_delete_message', 'Style "{name}" is assigned to {count} area(s). Choose a replacement style before deleting it.', {
+        name: name,
+        count: assignedCount,
+    }));
+    $dialog.css('display', 'flex');
+}
+
+function hideStyleDeleteDialog() {
+    pendingStyleDeleteName = '';
+    $editor.find('.eim-style-delete-dialog').hide();
+}
+
+function showSaveConflictDialog(message) {
+    const $dialog = $editor.find('.eim-save-conflict-dialog');
+    $dialog.find('[data-eim-save-conflict-message]').text(message || tt('dialog_save_conflict_message', 'The Easy Imagemap configuration changed after you opened the designer. Overwrite it with your current version?'));
+    $dialog.css('display', 'flex');
+}
+
+function hideSaveConflictDialog() {
+    $editor.find('.eim-save-conflict-dialog').hide();
+}
+
+function showSaveBlockedDialog(message) {
+    const $dialog = $editor.find('.eim-save-blocked-dialog');
+    $dialog.find('[data-eim-save-blocked-message]').text(message || tt('dialog_save_blocked_message', 'This Easy Imagemap configuration cannot be saved right now.'));
+    $dialog.css('display', 'flex');
+}
+
+function hideSaveBlockedDialog() {
+    $editor.find('.eim-save-blocked-dialog').hide();
+}
+
+function showUnsavedChangesDialog(action) {
+    pendingUnsavedAction = action;
+    $editor.find('.eim-unsaved-changes-dialog').css('display', 'flex');
+}
+
+function hideUnsavedChangesDialog() {
+    pendingUnsavedAction = null;
+    $editor.find('.eim-unsaved-changes-dialog').hide();
+}
+
+function requestDiscardChanges(action) {
+    if (!hasUnsavedEditorChanges()) {
+        action();
+        return;
+    }
+    showUnsavedChangesDialog(action);
+}
+
+function confirmDiscardChanges() {
+    const action = pendingUnsavedAction;
+    hideUnsavedChangesDialog();
+    if (typeof action == 'function') action();
+}
+
+function confirmStyleDelete() {
+    const name = pendingStyleDeleteName;
+    const replacement = $editor.find('[data-eim-style-delete-reassign]').val();
+    hideStyleDeleteDialog();
+    deleteStyle(name, replacement);
+}
+
+function deleteStyle(name, replacement) {
+    name = normalizeStyleName(name);
+    replacement = normalizeStyleName(replacement);
+    if (!name || !editorData.styles[name] || Object.keys(editorData.styles).length <= 1) return;
+    if (!replacement || replacement == name || !editorData.styles[replacement]) {
+        replacement = Object.keys(editorData.styles).find(styleName => styleName != name) ?? DEFAULT_STYLE_NAME;
+    }
+    getAreasUsingStyle(name).forEach(id => {
+        editorData.areas[id].style = replacement;
+    });
+    delete editorData.styles[name];
+    setSelectedStyleName(replacement);
+    updateStyleSelector();
+    Object.keys(editorData.areas).forEach(id => updateBackgroundShape(id, id == currentAreaId));
+    updateStyleControls();
+}
+
+function setAreaMode(mode, ids) {
+    if (!UPDATE_MODES.includes(mode)) return;
+    for (const id of ids) {
+        if (!editorData.areas[id]) continue;
+        editorData.areas[id].mode = mode;
+        updateAreaModeSample(id);
+    }
+    updateModeButtons();
+}
+
+function updateModeButtons() {
+    const mode = currentAreaId && editorData.areas[currentAreaId] ? editorData.areas[currentAreaId].mode : '';
+    const actions = {
+        '2-way': 'mode-two-way',
+        'to-target': 'mode-to-target',
+        'from-target': 'mode-from-target',
+    };
+    for (const key in actions) {
+        const $btn = $('button[data-action="' + actions[key] + '"]');
+        $btn.toggleClass('btn-primary', key == mode).toggleClass('btn-outline-primary', key != mode);
+    }
+}
+
+function removeAreaById(id) {
+    if (!id || !editorData.areas[id]) return;
+    if (id == currentAreaId) clearCurrentArea();
+    delete editorData.areas[id];
+    const $row = $('tr[data-area-id="' + id + '"]');
+    closeTargetPicker();
+    $row.remove();
+    $svg.find('[data-id="' + id + '"]').remove();
+    removeFromSelection([id]);
+    updateAllAssignableSelectVisuals();
+}
+
+function dropAreasWithoutShape() {
+    Object.keys(editorData.areas).forEach(id => {
+        if (!areaHasData(editorData.areas[id])) {
+            removeAreaById(id);
+        }
+    });
+    showWhenNoAreas();
+}
+
+function cancelEditor() {
+    setZoom(1);
+    editorData = null;
+    editorSavedState = '';
+    pendingUnsavedAction = null;
+    pendingSaveCloseOnSuccess = false;
+    setSpacePanKey(false);
+    endCanvasPan();
+    cleanupAssignableSelectpickerContainers();
+    hideShapeChangeDialog();
+    hideStyleDeleteDialog();
+    hideSaveConflictDialog();
+    hideSaveBlockedDialog();
+    hideUnsavedChangesDialog();
+    hideStylePanel();
+    $editor.find('.empty-on-close').children().remove();
+    $editor.find('.remove-on-close').remove();
+    // Prevent focus error
+    if (document.activeElement && typeof document.activeElement['blur'] == 'function') document.activeElement['blur']();
+    // @ts-ignore
+    $editor.modal('hide');
+    $('.to-top-button').show();
+}
+
+function saveMap(overwrite, closeOnSuccess = true) {
+    clearCurrentArea();
+    dropAreasWithoutShape();
+    const data = buildMapPayload();
+    data.overwrite = overwrite === true;
+    JSMO.ajax('save-map', data).then(function(response) {
+        handleSaveResponse(response, closeOnSuccess === true);
+    }).catch(function(err) {
+        showToast(tt('toast_failed_save', 'Failed to save data. Check console for details.'), 'error');
+        error(err);
+    });
+}
+
+function handleSaveResponse(response, closeOnSuccess) {
+    if (!response || !response.status) {
+        showSaveBlockedDialog(tt('dialog_save_missing_response', 'The save request did not complete. Reload the Online Designer and try again.'));
+        error(response);
+        return;
+    }
+    if (response && response.status == 'conflict') {
+        pendingSaveCloseOnSuccess = closeOnSuccess === true;
+        showSaveConflictDialog(response.message);
+        return;
+    }
+    if (response.status == 'blocked') {
+        showSaveBlockedDialog(response.message);
+        return;
+    }
+    if (response.configHash) {
+        editorData.configHash = response.configHash;
+    }
+    hideSaveConflictDialog();
+    hideSaveBlockedDialog();
+    pendingSaveCloseOnSuccess = false;
+    if (response.status == 'unchanged') {
+        markEditorStateSaved();
+        showToast(response.message || tt('toast_no_changes', 'No changes to save.'), 'info');
+    }
+    else if (response.status == 'saved') {
+        markEditorStateSaved();
+        showToast(tt('toast_saved', 'Map data was successfully saved.'), 'success');
+    }
+    else {
+        showSaveBlockedDialog(tt('dialog_save_unexpected_response', 'The save request returned an unexpected status. Reload the Online Designer and try again.'));
+        error(response);
+        return;
+    }
+    if (closeOnSuccess) {
+        executeEditorAction('cancel', $());
+    }
+}
+
 
 //#region Action Dispatcher
 
 
-function executeEditorAction(action, $row) {
+function executeEditorAction(action, $row, event) {
     if (action) {
         log('Editor action: ' + action)
     }
     switch (action) {
         //#region Main Toolbar
         case 'preview': {
-            applyZoom('zoom1x');
+            setZoom(1);
             togglePreview();
         }
         break;
-        case 'zoom1x':
-        case 'zoom2x':
-        case 'zoom3x':
-        case 'zoom4x':
-            applyZoom(action);
+        case 'zoom-decrease': {
+            setZoom(editorData.zoom - zoomButtonStep(-1));
+        }
+        break;
+        case 'zoom-reset': {
+            setZoom(1);
+        }
+        break;
+        case 'zoom-increase': {
+            setZoom(editorData.zoom + zoomButtonStep(1));
+        }
+        break;
+        case 'zoom-slider': {
+            setZoom((Number.parseFloat($(event.target).val()) || 100) / 100);
+        }
         break;
         case 'mode-edit': {
             setMode('edit');
@@ -1047,7 +3554,122 @@ function executeEditorAction(action, $row) {
             setMode('move');
         }
         break;
-
+        case 'type-circle':
+        case 'type-poly':
+        case 'type-rect':
+        case 'type-ell': {
+            setShapeType(action.replace('type-', ''));
+        }
+        break;
+        case 'shape-change-confirm': {
+            confirmShapeChange();
+        }
+        break;
+        case 'shape-change-cancel': {
+            hideShapeChangeDialog();
+        }
+        break;
+        case 'style-panel-show': {
+            showStylePanel();
+        }
+        break;
+        case 'style-panel-hide': {
+            hideStylePanel();
+        }
+        break;
+        case 'style-regular':
+        case 'style-hover':
+        case 'style-selected': {
+            setStyleState(action.replace('style-', ''));
+        }
+        break;
+        case 'style-apply-to-selected': {
+            applyStyleToSelected();
+        }
+        break;
+        case 'style-select': {
+            assignSelectedStyle(getSelectedStyleName(), currentAreaId ? [currentAreaId] : editorData.selection);
+        }
+        break;
+        case 'style-add-start': {
+            showNewStyleInput();
+        }
+        break;
+        case 'style-add-confirm': {
+            addNamedStyle();
+        }
+        break;
+        case 'style-add-cancel': {
+            hideNewStyleInput();
+        }
+        break;
+        case 'style-delete-start': {
+            startDeleteSelectedStyle();
+        }
+        break;
+        case 'style-delete-confirm': {
+            confirmStyleDelete();
+        }
+        break;
+        case 'style-delete-cancel': {
+            hideStyleDeleteDialog();
+        }
+        break;
+        case 'save-conflict-confirm': {
+            hideSaveConflictDialog();
+            saveMap(true, pendingSaveCloseOnSuccess);
+        }
+        break;
+        case 'save-conflict-cancel': {
+            pendingSaveCloseOnSuccess = false;
+            hideSaveConflictDialog();
+        }
+        break;
+        case 'save-blocked-close': {
+            hideSaveBlockedDialog();
+        }
+        break;
+        case 'unsaved-discard-confirm': {
+            confirmDiscardChanges();
+        }
+        break;
+        case 'unsaved-discard-cancel': {
+            hideUnsavedChangesDialog();
+        }
+        break;
+        case 'style-copy': {
+            copyStyleState();
+        }
+        break;
+        case 'style-paste': {
+            pasteStyleState();
+        }
+        break;
+        case 'style-sync-states': {
+            syncStyleStates();
+        }
+        break;
+        case 'mode-two-way': {
+            setAreaMode('2-way', currentAreaId ? [currentAreaId] : editorData.selection);
+        }
+        break;
+        case 'mode-to-target': {
+            setAreaMode('to-target', currentAreaId ? [currentAreaId] : editorData.selection);
+        }
+        break;
+        case 'mode-from-target': {
+            setAreaMode('from-target', currentAreaId ? [currentAreaId] : editorData.selection);
+        }
+        break;
+        case 'mode-apply-to-selected': {
+            if (currentAreaId) setAreaMode(editorData.areas[currentAreaId].mode, editorData.selection);
+        }
+        break;
+        case 'cycle-area-mode': {
+            const id = $row.attr('data-area-id') ?? '';
+            if (id && editorData.areas[id]) setAreaMode(nextAreaMode(editorData.areas[id].mode), [id]);
+        }
+        break;
         //#endregion
 
 
@@ -1055,15 +3677,14 @@ function executeEditorAction(action, $row) {
             const id = $row.attr('data-area-id');
             const code = $row.find('select').val();
             editorData.areas[id].target = code;
+            updateAllAssignableSelectVisuals();
         }
         break;
-        case 'style-area': {
-            const id = $row.attr('data-area-id');
-            log('Styling area ' + id);
-        }
-        break;
-        case 'style-areas': {
-            log('Styling areas ...');
+        case 'style-change': {
+            const $target = $(event.target);
+            const prop = $target.attr('data-style-prop') ?? '';
+            const value = $target.val();
+            if (prop) applyStyleChange(prop, value);
         }
         break;
         case 'toggle-select-all': {
@@ -1081,20 +3702,18 @@ function executeEditorAction(action, $row) {
         case 'edit-area': {
             const id = $row.attr('data-area-id');
             setMode('edit');
-            setCurrentEditArea(id);
+            setCurrentEditArea(id, true);
         }
         break;
         case 'select-area': {
             const id = $row.attr('data-area-id');
             const checked = $row.find('input[data-action="select-area"]').prop('checked');
             log('Select area ' + id + ': ' + (checked ? 'Checked' : 'Unchecked'));
-            if (editorData.mode == 'move') {
-                if (checked) {
-                    addToSelection([id]);
-                }
-                else {
-                    removeFromSelection([id]);
-                }
+            if (checked) {
+                addToSelection([id]);
+            }
+            else {
+                removeFromSelection([id]);
             }
         }
         break;
@@ -1102,6 +3721,7 @@ function executeEditorAction(action, $row) {
             const id = $row.attr('data-area-id') ?? '';
             const uuid = addNewArea();
             addTableRow(uuid, id);
+            showWhenNoAreas();
             if (editorData.mode == 'edit') {
                 setCurrentEditArea(uuid);
             }
@@ -1111,6 +3731,7 @@ function executeEditorAction(action, $row) {
             const id = $row.attr('data-area-id') ?? '';
             const uuid = cloneArea(id);
             addTableRow(uuid, id);
+            showWhenNoAreas();
             if (editorData.mode == 'edit') {
                 setCurrentEditArea(uuid);
             }
@@ -1118,51 +3739,28 @@ function executeEditorAction(action, $row) {
         break;
         case 'remove-area': {
             const id = $row.attr('data-area-id');
-            if (id == currentAreaId) {
-                clearCurrentArea();
-            }
-            if (id && editorData.areas[id]) {
-                delete editorData.areas[id];
-                $row.remove();
-                $svg.find('polygon[data-id="' + id + '"]').each(function() {
-                    this.remove();
-                });
-            }
+            removeAreaById(id);
+            showWhenNoAreas();
+        }
+        break;
+        case 'remove-selected-areas': {
+            const ids = editorData.selection.slice();
+            ids.forEach(removeAreaById);
             showWhenNoAreas();
         }
         break;
         //#endregion
         //#region Exit Editor
         case 'cancel': {
-            // Reset
-            applyZoom('zoom1x');
-            editorData = null;
-            $editor.find('.empty-on-close').children().remove();
-            $editor.find('.remove-on-close').remove();
-            // Prevent focus error
-            if (document.activeElement && typeof document.activeElement['blur'] == 'function') document.activeElement['blur']();
-            // Close editor
-            // @ts-ignore
-            $editor.modal('hide');
-            $('.to-top-button').show();
+            requestDiscardChanges(cancelEditor);
         }
         break;
         case 'apply': {
-            clearCurrentArea();
-            const data = {
-                fieldName: editorData.fieldName,
-                formName: editorData.formName,
-                bounds: editorData.bounds,
-                'two-way': $editor.find('input[name=two-way]').prop('checked'),
-                map: areasToMap(),
-            }
-            JSMO.ajax('save-map', data).then(function() {
-                showToast('Map data was successfully saved.');
-                executeEditorAction('cancel', $());
-            }).catch(function(err) {
-                showToast('Failed to save data. Check console for details.', true);
-                error(err);
-            });
+            saveMap(false, true);
+        }
+        break;
+        case 'save': {
+            saveMap(false, false);
         }
         break;
         //#endregion
@@ -1204,15 +3802,46 @@ function generateUUID() {
 
 /**
  * Shows a message in a toast
- * @param {string} msg 
- * @param {boolean} isError
+ * @param {string} msg
+ * @param {'info'|'warning'|'error'|'success'|'dark'|'light'|boolean} type
+ * @param {number} delay
+ * @param {string|null} title
  */
-function showToast(msg, isError = false) {
+function showToast(msg, type = 'success', delay = 1000, title = null) {
+    if (type === true) type = 'error';
+    if (type === false) type = 'success';
+    const toastType = ['info', 'warning', 'error', 'success', 'dark', 'light'].includes(type) ? type : 'success';
+    const toastTitle = title || getToastTitle(toastType);
     // @ts-ignore
-    const toastId = window.showToast("Easy Imagemap", msg, 'success', 1000);
-    if (isError) {
+    const toastId = window.showToast(toastTitle, msg, toastType, delay);
+    if (toastType == 'error') {
         error($('#' + toastId).text());
     }
+}
+
+function tt(key, fallback, replacements = {}) {
+    let text = (config.lang && config.lang[key]) ? config.lang[key] : fallback;
+    Object.keys(replacements).forEach(name => {
+        text = text.replace(new RegExp('\\{' + name + '\\}', 'g'), replacements[name]);
+    });
+    return text;
+}
+
+function getToastTitle(type) {
+    const labels = {
+        error: getLangLabel('global_01', 'ERROR'),
+        warning: getLangLabel('global_48', 'WARNING'),
+        success: getLangLabel('global_79', 'SUCCESS!'),
+        info: tt('app_title', 'Easy Imagemap'),
+        dark: tt('app_title', 'Easy Imagemap'),
+        light: tt('app_title', 'Easy Imagemap'),
+    };
+    return labels[type] ?? tt('app_title', 'Easy Imagemap');
+}
+
+function getLangLabel(key, fallback) {
+    // @ts-ignore
+    return window.lang && window.lang[key] ? window.lang[key] : fallback;
 }
 
 //#endregion
