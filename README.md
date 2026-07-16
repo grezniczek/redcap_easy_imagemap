@@ -213,6 +213,10 @@ Invalid JSON in the action tag remains a hard error and must be fixed manually. 
 
 The example fields shown in this document (descriptive with inline image and three checkbox fields) are available as a [REDCap.PasteableFields JSON file](demo/IllustrativeJointMap.PastableFields.json). Open this file, copy its contents, and paste them into a form in the Online Designer.
 
+## Release History
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
+
 ## License And Third-Party Material
 
 The Easy Imagemap module source code is licensed under the MIT License. This license does not relicense third-party material shown or referenced in the documentation, including REDCap user interface elements, REDCap names and trademarks, cited or demo artwork such as the Servier Medical Art-derived example image, or project-specific source images visible in screenshots. Those materials remain subject to their respective licenses, terms, and rights holders.
@@ -237,16 +241,6 @@ year = {2026}
 ```
 
 These instructions are also available in [GitHub](https://github.com/grezniczek/redcap_imagemap) under 'Cite This Repository'.
-
-## Support this work
-
-If you find this software useful, you can [buy me a coffee or a beer](https://www.paypal.com/donate/?hosted_button_id=6VRC2JFRCBGRN). Your support is purely voluntary and helps me continue improving this project. Of course, you are not entitled to any special benefits—except my silent appreciation while enjoying the drink! 🍻☕
-
-You can use the link or the QR code below to make a donation via PayPal.
-
-![PayPal QR Code](images/qr-paypal.png)
-
-_Please note that donations are purely voluntary and not tax-deductible._
 
 
 ---

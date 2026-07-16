@@ -209,6 +209,10 @@ In Produktionsprojekten sollten Modulcode und Projektmetadaten gemeinsam bereitg
 
 Ungültiges JSON im Action Tag bleibt ein harter Fehler und muss manuell behoben werden. Einzelne ungültige Bereiche werden bei der Anzeige nach Möglichkeit übersprungen, und die Validierung beim Speichern verhindert, dass unvollständige oder ungültige Designer-Bereiche unbemerkt gespeichert werden.
 
+## Versionsverlauf
+
+Versionshistorie und wichtige Änderungen sind in der nicht lokalisierten Datei [CHANGELOG.md](CHANGELOG.md) dokumentiert.
+
 ## Lizenz und Drittmaterial
 
 Der Quellcode des Easy Imagemap-Moduls ist unter der MIT-Lizenz lizenziert. Diese Lizenz lizenziert kein Drittmaterial neu, das in der Dokumentation gezeigt oder referenziert wird, einschließlich REDCap-Benutzeroberflächen, REDCap-Namen und -Marken, zitierter oder demohaft verwendeter Grafiken wie der von Servier Medical Art abgeleiteten Beispielgrafik oder projektspezifischer Ausgangsbilder in Screenshots. Diese Materialien bleiben ihren jeweiligen Lizenzen, Bedingungen und Rechteinhabern unterworfen.
@@ -233,16 +237,6 @@ year = {2026}
 ```
 
 Diese Angaben sind auch auf [GitHub](https://github.com/grezniczek/redcap_imagemap) unter "Cite This Repository" verfügbar.
-
-## Dieses Projekt unterstützen
-
-Wenn Sie diese Software nützlich finden, können Sie mir [einen Kaffee oder ein Bier spendieren](https://www.paypal.com/donate/?hosted_button_id=6VRC2JFRCBGRN). Ihre Unterstützung ist rein freiwillig und hilft mir, dieses Projekt weiter zu verbessern. Natürlich entsteht daraus kein Anspruch auf besondere Vorteile - abgesehen von meiner stillen Wertschätzung beim Genuss des Getränks! 🍻☕
-
-Sie können den Link oder den untenstehenden QR-Code verwenden, um über PayPal zu spenden.
-
-![PayPal-QR-Code](images/qr-paypal.png)
-
-_Bitte beachten Sie, dass Spenden rein freiwillig und nicht steuerlich absetzbar sind._
 
 
 ---

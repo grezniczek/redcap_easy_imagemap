@@ -1,5 +1,7 @@
 <?php
 
+namespace DE\RUB\EasyImagemapExternalModule;
+
 require_once __DIR__ . "/../classes/MapDataHelper.php";
 require_once __DIR__ . "/../classes/ActionTagHelper.php";
 

@@ -1,6 +1,9 @@
 /.vscode export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
+/SUPPORT.md export-ignore
+/images/qr-paypal.png export-ignore
+/tests/map_data_helper_smoke.php export-ignore
 EM.code-workspace export-ignore
 package-lock.json export-ignore
 Possible_Future_Features.md export-ignore
