@@ -132,7 +132,8 @@ function addOnlineDesignerButtons() {
                     }
                     editImageMap();
                 }).catch(function(err) {
-                    showToast(err, 'error');
+                    showToast(err && err.message ? err.message : String(err), 'error');
+                    error(err);
                 }).finally(function() {
                     $btn.prop('disabled', false);
                     showingEditor = false;
@@ -227,9 +228,27 @@ function editImageMap() {
     currentAnchor = null;
     $editor.find('.field-name').text(editorData.fieldName);
     const $container = $editor.find('#eim-container');
-    $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]').clone();
-    const w = $img.width();
-    const h = $img.height();
+    const $fieldCell = $('#design-' + editorData.fieldName + ' td.labelrc');
+    let $sourceImage = $fieldCell.find('img[src*="' + editorData.hash + '"]').first();
+    // REDCap versions and storage backends may render a different image URL. The
+    // qualifying field has one inline uploaded image, so use it as a fallback.
+    if (!$sourceImage.length) {
+        $sourceImage = $fieldCell.find('img').first();
+    }
+    const sourceImage = $sourceImage.get(0);
+    if (!sourceImage) {
+        throw new Error(tt('error_image_unavailable', 'Could not find the inline image for this field. Reload the Online Designer and try again.'));
+    }
+
+    // Measure the source while it is still in the document. A cloned, detached
+    // image can report 0 x 0 in some browser/layout combinations.
+    const rect = sourceImage.getBoundingClientRect();
+    const w = Math.round(rect.width || sourceImage.width || sourceImage.naturalWidth || 0);
+    const h = Math.round(rect.height || sourceImage.height || sourceImage.naturalHeight || 0);
+    if (w <= 0 || h <= 0) {
+        throw new Error(tt('error_image_dimensions_unavailable', 'Could not determine positive dimensions for the inline image. Ensure it has finished loading, then reload the Online Designer and try again.'));
+    }
+    $img = $sourceImage.clone();
     // Build the assignable box
     assignableLabels = {};
     const notAssigned = tt('option_not_assigned', '(not assigned)');

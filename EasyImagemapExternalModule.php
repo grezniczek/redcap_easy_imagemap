@@ -558,6 +558,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             "toast_failed_save",
             "toast_no_changes",
             "toast_saved",
+            "error_image_unavailable",
+            "error_image_dimensions_unavailable",
             "dialog_shape_change_message",
             "shape_circle",
             "shape_ellipse",
