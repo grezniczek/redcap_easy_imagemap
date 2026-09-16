@@ -172,6 +172,15 @@ Click **Save** to write the current map to REDCap metadata without closing the d
 
 Saving updates the descriptive field's action tag parameter directly in REDCap metadata and logs the change in the project log with action `Design`.
 
+## Codebook Display
+
+Large map configurations can make field annotations difficult to scan in REDCap's Data Dictionary Codebook. Easy Imagemap adds a preferences row below the Codebook's **Field finder**.
+
+- Select **Hide full configuration JSON** to display each configured map as `@EASYIMAGEMAP=[configured]` in the Codebook.
+- With that option selected, choose **Show configuration JSON at end of Codebook** to append compact JSON configurations at the bottom of the page, grouped by field name.
+
+These preferences are saved separately for each user and project. Changing either option reloads the Codebook. Unconfigured, parameterless action tags and invalid JSON remain unchanged so that setup and configuration problems stay visible.
+
 ## Data Entry And Surveys
 
 On data entry forms and surveys, Easy Imagemap waits for REDCap to render the page, finds the inline image by REDCap's document hash, and overlays an SVG with the saved shapes. The overlay follows REDCap image resizing and fitting, so it works with responsive survey layouts and mobile/touch use.

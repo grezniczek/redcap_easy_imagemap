@@ -172,6 +172,15 @@ Klicken Sie auf **Speichern**, um die aktuelle Imagemap in die REDCap-Metadaten 
 
 Beim Speichern wird der Action-Tag-Parameter des beschreibenden Feldes direkt in den REDCap-Metadaten aktualisiert. Die Änderung wird im Projekt-Log mit der Aktion `Design` protokolliert.
 
+## Codebook-Anzeige
+
+Umfangreiche Imagemap-Konfigurationen können Feldannotationen im Data-Dictionary-Codebook von REDCap schwer lesbar machen. Easy Imagemap ergänzt unterhalb der **Feldsuche** im Codebook eine Zeile mit Einstellungen.
+
+- Wählen Sie **Vollständige Konfigurations-JSON ausblenden**, um jede konfigurierte Karte im Codebook als `@EASYIMAGEMAP=[configured]` anzuzeigen.
+- Wenn diese Option aktiviert ist, können Sie **Konfigurations-JSON am Ende des Codebooks anzeigen** wählen. Dadurch werden kompakte JSON-Konfigurationen nach Feldnamen gruppiert am Seitenende angehängt.
+
+Diese Einstellungen werden getrennt für jede Benutzerin bzw. jeden Benutzer und jedes Projekt gespeichert. Beim Ändern einer Option wird das Codebook neu geladen. Unkonfigurierte, parameterlose Action Tags und ungültiges JSON bleiben unverändert sichtbar, damit Einrichtungs- und Konfigurationsprobleme erkennbar bleiben.
+
 ## Dateneingabe und Umfragen
 
 Auf Dateneingabeformularen und Umfragen wartet Easy Imagemap, bis REDCap die Seite gerendert hat, sucht das Inline-Bild anhand des REDCap-Dokument-Hashes und legt ein SVG mit den gespeicherten Formen darüber. Das Overlay folgt Größenänderungen und Anpassungen des REDCap-Bildes, sodass es mit responsiven Umfrage-Layouts und auf mobilen bzw. touch-basierten Geräten funktioniert.
