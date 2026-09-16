@@ -1,9 +1,12 @@
 /.vscode export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
+/.github/ export-ignore
+/.zenodo.json export-ignore
 /SUPPORT.md export-ignore
 /images export-ignore
 /tests export-ignore
 EM.code-workspace export-ignore
+package.json export-ignore
 package-lock.json export-ignore
 Possible_Future_Features.md export-ignore
