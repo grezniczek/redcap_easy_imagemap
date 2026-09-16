@@ -15,7 +15,8 @@
     "auth-ajax-actions": [
         "get-fields",
         "edit-map",
-        "save-map"
+        "save-map",
+        "save-codebook-preferences"
     ],
     "action-tags": [
         {

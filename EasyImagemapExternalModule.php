@@ -22,6 +22,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
 
     const ACTIONTAG = "@EASYIMAGEMAP";
 
+    const CODEBOOK_HIDE_FULL_CONFIGS = "codebook-hide-full-configs";
+    const CODEBOOK_SHOW_DETAILS = "codebook-show-details";
+
     #region Hooks
 
     function redcap_data_entry_form($project_id, $record, $instrument, $event_id, $group_id, $repeat_instance)
@@ -59,6 +62,10 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         if ($project_id == null) return;
         // Act based on the page that is being displayed
         $page = defined("PAGE") ? PAGE : "";
+        if ($page == "Design/data_dictionary_codebook.php") {
+            $this->setup_data_dictionary_codebook();
+            return;
+        }
         // Return if not on Online Designer / form edit mode
         if ($page != "Design/online_designer.php") return;
         // Also, ensure there is a user with desgin rights
@@ -79,6 +86,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     function redcap_module_ajax($action, $payload, $project_id, $record, $instrument, $event_id, $repeat_instance, $survey_hash, $response_id, $survey_queue_hash, $page, $page_full, $user_id, $group_id)
     {
         $this->init_proj($project_id);
+        if ($action === "save-codebook-preferences") {
+            return $this->save_codebook_preferences($payload);
+        }
         $user = $this->framework->getUser($user_id);
         $rights = $user->getRights($project_id);
         // All actions require design rights
@@ -95,6 +105,105 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             }
         }
         return null;
+    }
+
+    #endregion
+
+    #region Data Dictionary Codebook
+
+    /**
+     * Adds Codebook controls and, when requested, replaces verbose Easy Imagemap
+     * JSON parameters in the global project metadata before REDCap renders it.
+     *
+     * @return void
+     */
+    private function setup_data_dictionary_codebook()
+    {
+        global $Proj;
+
+        $hide_full_configs = $this->getUserSetting(self::CODEBOOK_HIDE_FULL_CONFIGS) === "1";
+        $show_details = $hide_full_configs && $this->getUserSetting(self::CODEBOOK_SHOW_DETAILS) === "1";
+        $details = [];
+
+        if ($hide_full_configs && isset($Proj->metadata) && is_array($Proj->metadata)) {
+            foreach ($Proj->metadata as $field_name => &$field) {
+                $misc = $field["misc"] ?? "";
+                $tags = ActionTagHelper::parseActionTags($misc, self::ACTIONTAG);
+                if (!is_array($tags) || !count($tags)) continue;
+
+                foreach ($tags as $tag) {
+                    $params = trim($tag["params"] ?? "");
+                    if ($params === "") continue;
+                    try {
+                        $config = json_decode($params, true, 512, JSON_THROW_ON_ERROR);
+                    } catch (\Throwable $_) {
+                        // Retain invalid JSON verbatim so the Codebook remains useful for troubleshooting.
+                        continue;
+                    }
+                    if (!is_array($config) || !count($config)) continue;
+
+                    if ($show_details) {
+                        $details[] = [
+                            "fieldName" => $field_name,
+                            "json" => json_encode($config, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                        ];
+                    }
+                    $misc = str_replace($tag["match"], $tag["actiontag"] . "=[configured]", $misc);
+                }
+                $field["misc"] = $misc;
+            }
+            unset($field);
+        }
+
+        $ih = InjectionHelper::init($this);
+        $ih->css("css/EasyImagemap-Codebook.css");
+        $ih->js("js/EasyImagemap-Codebook.js");
+        $this->initializeJavascriptModuleObject();
+        $config = [
+            "moduleName" => $this->tt("app_title"),
+            "hideFullConfigs" => $hide_full_configs,
+            "showDetails" => $show_details,
+            "details" => $details,
+            "lang" => $this->get_codebook_js_lang(),
+        ];
+        $json = json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR);
+        print \RCView::script("DE_RUB_EasyImagemap.initCodebook($json, " . $this->getJavascriptModuleObjectName() . ");");
+    }
+
+    /**
+     * Saves the Codebook display choices for the current user and project.
+     *
+     * @param mixed $payload
+     * @return array
+     */
+    private function save_codebook_preferences($payload)
+    {
+        if (!is_array($payload)) {
+            throw new Exception("Invalid Codebook preferences.");
+        }
+        $hide_full_configs = !empty($payload["hideFullConfigs"]);
+        $show_details = $hide_full_configs && !empty($payload["showDetails"]);
+        $this->setUserSetting(self::CODEBOOK_HIDE_FULL_CONFIGS, $hide_full_configs ? "1" : "0");
+        $this->setUserSetting(self::CODEBOOK_SHOW_DETAILS, $show_details ? "1" : "0");
+        return [
+            "hideFullConfigs" => $hide_full_configs,
+            "showDetails" => $show_details,
+        ];
+    }
+
+    private function get_codebook_js_lang()
+    {
+        $keys = [
+            "codebook_hide_full_configs",
+            "codebook_show_details",
+            "codebook_details_heading",
+            "codebook_details_field",
+        ];
+        $lang = [];
+        foreach ($keys as $key) {
+            $lang[$key] = $this->tt($key);
+        }
+        return $lang;
     }
 
     #endregion
