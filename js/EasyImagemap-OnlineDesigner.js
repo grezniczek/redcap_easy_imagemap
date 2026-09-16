@@ -73,16 +73,18 @@ function initialize(config_data, jsmo_obj) {
         // @ts-ignore
         window.reloadDesignTable = function(form_name, js) {
             log('Reloaded design table')
-            EIM_reloadDesignTable(form_name, js);
-            updateFields();
+            const result = EIM_reloadDesignTable.apply(this, arguments);
+            refreshFieldsAfterDOMUpdate(document.getElementById('draggablecontainer_parent'));
+            return result;
         }
         // @ts-ignore
         const EIM_insertRow = window.insertRow;
         // @ts-ignore
         window.insertRow = function(tblId, current_field, edit_question, is_last, moveToRowAfter, section_header, delete_row) {
             log('New row inserted: ', current_field);
-            EIM_insertRow(tblId, current_field, edit_question, is_last, moveToRowAfter, section_header, delete_row);
-            updateFields();
+            const result = EIM_insertRow.apply(this, arguments);
+            refreshFieldsAfterDOMUpdate(document.getElementById(tblId));
+            return result;
         }
         // Setup editor and events
         $editor = $('.modal.eim-editor');
@@ -115,6 +117,15 @@ function addOnlineDesignerButtons() {
     for (let fieldName of Object.keys(config.fields)) {
         log('Adding button for field ' + fieldName);
 
+        const $fieldCell = $('#design-' + fieldName + ' td.labelrc');
+        if (!$fieldCell.length) continue;
+        let $buttonContainer = $fieldCell.children('.eim-configure-container').first();
+        if (!$buttonContainer.length) {
+            $buttonContainer = $('<div class="eim-configure-container" style="position:relative;"></div>');
+            $buttonContainer.append($fieldCell.contents());
+            $fieldCell.append($buttonContainer);
+        }
+
         const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"></div>');
         $('<button class="btn btn-defaultrc btn-xs"></button>')
             .append('<i class="fa-solid fa-draw-polygon eim-icon me-1"></i>')
@@ -132,7 +143,8 @@ function addOnlineDesignerButtons() {
                     }
                     editImageMap();
                 }).catch(function(err) {
-                    showToast(err, 'error');
+                    showToast(err && err.message ? err.message : String(err), 'error');
+                    error(err);
                 }).finally(function() {
                     $btn.prop('disabled', false);
                     showingEditor = false;
@@ -140,7 +152,7 @@ function addOnlineDesignerButtons() {
             }
             return false;
         })
-        $('#design-' + fieldName + ' td.labelrc').append($btn).children().wrapAll('<div style="position:relative;"></div>');
+        $buttonContainer.append($btn);
     }
 }
 
@@ -210,13 +222,41 @@ function setupTableDnD() {
 
 
 
+function refreshFieldsAfterDOMUpdate(target) {
+    if (!target || typeof MutationObserver == 'undefined') {
+        setTimeout(updateFields, 50);
+        return;
+    }
+
+    let observer = null;
+    let fallbackTimer = null;
+    let refreshScheduled = false;
+    const refresh = function() {
+        if (!observer) return;
+        observer.disconnect();
+        observer = null;
+        clearTimeout(fallbackTimer);
+        updateFields();
+    };
+    observer = new MutationObserver(function(mutations) {
+        const tableChanged = mutations.some(mutation =>
+            mutation.type == 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length)
+        );
+        if (tableChanged && !refreshScheduled) {
+            refreshScheduled = true;
+            // REDCap completes its row setup in the same task as the DOM change.
+            setTimeout(refresh, 0);
+        }
+    });
+    observer.observe(target, { childList: true, subtree: true });
+    fallbackTimer = setTimeout(refresh, 5000);
+}
+
 function updateFields() {
     JSMO.ajax('get-fields', config.form).then(function(data) {
         log('Updated fields:', data)
         config.fields = data
-        setTimeout(function() {
-            addOnlineDesignerButtons();
-        }, 0);
+        addOnlineDesignerButtons();
     });
 }
 
@@ -227,9 +267,27 @@ function editImageMap() {
     currentAnchor = null;
     $editor.find('.field-name').text(editorData.fieldName);
     const $container = $editor.find('#eim-container');
-    $img = $('#design-' + editorData.fieldName + ' td.labelrc img[src*="' + editorData.hash + '"]').clone();
-    const w = $img.width();
-    const h = $img.height();
+    const $fieldCell = $('#design-' + editorData.fieldName + ' td.labelrc');
+    let $sourceImage = $fieldCell.find('img[src*="' + editorData.hash + '"]').first();
+    // REDCap versions and storage backends may render a different image URL. The
+    // qualifying field has one inline uploaded image, so use it as a fallback.
+    if (!$sourceImage.length) {
+        $sourceImage = $fieldCell.find('img').first();
+    }
+    const sourceImage = $sourceImage.get(0);
+    if (!sourceImage) {
+        throw new Error(tt('error_image_unavailable', 'Could not find the inline image for this field. Reload the Online Designer and try again.'));
+    }
+
+    // Measure the source while it is still in the document. A cloned, detached
+    // image can report 0 x 0 in some browser/layout combinations.
+    const rect = sourceImage.getBoundingClientRect();
+    const w = Math.round(rect.width || sourceImage.width || sourceImage.naturalWidth || 0);
+    const h = Math.round(rect.height || sourceImage.height || sourceImage.naturalHeight || 0);
+    if (w <= 0 || h <= 0) {
+        throw new Error(tt('error_image_dimensions_unavailable', 'Could not determine positive dimensions for the inline image. Ensure it has finished loading, then reload the Online Designer and try again.'));
+    }
+    $img = $sourceImage.clone();
     // Build the assignable box
     assignableLabels = {};
     const notAssigned = tt('option_not_assigned', '(not assigned)');

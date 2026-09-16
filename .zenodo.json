@@ -1,0 +1,26 @@
+{
+  "creators": [
+    {
+      "name": "Rezniczek, Günther A.",
+      "orcid": "0000-0002-0852-6002",
+      "affiliation": "St. Elisabeth Gruppe GmbH, Klinikum der Ruhr-Universität Bochum, Herne, Germany"
+    }
+  ],
+  "title": "Easy Imagemap (REDCap External Module)",
+  "description": "Easy Imagemap is a REDCap External Module for turning inline images in descriptive fields into clickable, responsive image maps. It provides a visual designer for polygon, rectangle, circle, and ellipse areas, links those areas to checkbox, radio, select, yes/no, or true/false fields, and stores the map configuration in the @EASYIMAGEMAP action tag as REDCap project metadata.",
+  "access_right": "open",
+  "keywords": [
+    "REDCap",
+    "REDCap External Module",
+    "image map",
+    "clickable image",
+    "visual data entry",
+    "survey",
+    "clinical research",
+    "registry"
+  ],
+  "license": "mit",
+  "upload_type": "software",
+  "publisher": "GitHub",
+  "language": "eng"
+}

@@ -1,0 +1,31 @@
+.eim-codebook-preferences label {
+    margin: 0 0 0 0.25rem;
+}
+
+.eim-codebook-details-control {
+    margin-left: 0.5rem;
+}
+
+.eim-codebook-config-details {
+    margin: 2rem 0 1rem;
+    max-width: 99%;
+}
+
+.eim-codebook-config-details h3 {
+    font-size: 1.2rem;
+}
+
+.eim-codebook-config-details h4 {
+    font-size: 1rem;
+    margin: 1rem 0 0.25rem;
+}
+
+.eim-codebook-config-details pre {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    margin: 0;
+    overflow: auto;
+    padding: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
