@@ -1,6 +1,6 @@
 # Easy Imagemap
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20555865.svg)](https://doi.org/10.5281/zenodo.20555865)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22796052.svg)](https://doi.org/10.5281/zenodo.22796052)
 
 Easy Imagemap ist ein REDCap External Module, das ein Inline-Bild in einem beschreibenden Feld in eine klickbare Imagemap verwandelt. Das ist hilfreich, wenn ein Auswahlfeld einfacher, sicherer oder schneller über eine Region in einem Bild ausgefüllt werden kann als über eine lange Liste von Auswahlmöglichkeiten. Typische Beispiele sind Körperkarten, Gelenkzählungen, Wunddiagramme, Zahnschemata, Proben- oder Präparatediagramme und andere strukturierte klinische oder Registerformulare, bei denen die visuelle Position relevant ist.
 

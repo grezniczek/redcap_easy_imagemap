@@ -1,6 +1,6 @@
 # Easy Imagemap
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20555865.svg)](https://doi.org/10.5281/zenodo.20555865)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22796052.svg)](https://doi.org/10.5281/zenodo.22796052)
 
 ## Support this work
 
@@ -11,4 +11,3 @@ You can use the link or the QR code below to make a donation via PayPal.
 ![PayPal QR Code](images/qr-paypal.png)
 
 _Please note that donations are purely voluntary and not tax-deductible._
-
