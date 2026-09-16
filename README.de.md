@@ -232,6 +232,10 @@ Bitte verwenden Sie die aus [CITATION.cff](CITATION.cff) erzeugte Zitation. Wäh
 
 ---
 
-**Disclaimer**
+## KI-Unterstützung
 
-Teile dieser Dokumentation und der Release-Politur wurden mit Unterstützung von OpenAIs ChatGPT/Codex entwickelt, um Klarheit, Konsistenz und Benutzerfreundlichkeit für REDCap-Projektdesigner zu fördern. Der endgültige Inhalt wurde vom Maintainer geprüft und angepasst, um die spezifische Funktionalität und die Standards des External Modules *Easy Imagemap* widerzuspiegeln.
+Bei der Entwicklung dieses Projekts wurde umfassend KI-Unterstützung eingesetzt. KI-Werkzeuge, vor allem ChatGPT von OpenAI, wurden im gesamten Entwicklungsprozess verwendet, unter anderem für Diskussion und Ausarbeitung von Design und Architektur, Implementierung und Refaktorierung von Code, Debugging und Review sowie Erstellung und Überarbeitung der Dokumentation.
+
+Umfang und Art dieser Unterstützung unterscheiden sich innerhalb des Projekts und werden nicht einzelnen Commits zugeschrieben. KI-generierte Vorschläge und Beiträge werden im Rahmen des normalen Entwicklungsprozesses geprüft, angepasst und integriert.
+
+Die Verantwortung für Design, Implementierung, Wartung und veröffentlichte Software liegt vollständig beim Projektmaintainer.

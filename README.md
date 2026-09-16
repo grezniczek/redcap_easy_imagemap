@@ -236,6 +236,10 @@ Please use the citation generated from [CITATION.cff](CITATION.cff). On [GitHub]
 
 ---
 
-**Disclaimer**
+## AI assistance
 
-Parts of this documentation and release polish were developed with assistance from OpenAI's ChatGPT/Codex to support clarity, consistency, and ease of use for REDCap project designers. Final content has been reviewed and adapted by the maintainer to reflect the specific functionality and standards of the *Easy Imagemap* external module.
+Development of this project has made extensive use of AI assistance. AI tools, primarily ChatGPT by OpenAI, have been used throughout the development process, including for discussion and refinement of design and architecture, implementation and refactoring of code, debugging and review, and preparation and revision of documentation.
+
+The extent and nature of this assistance vary across the project and are not attributed to individual commits. AI-generated suggestions and contributions are reviewed, adapted, and integrated as part of the normal development process.
+
+Responsibility for the design, implementation, maintenance, and released software remains entirely with the project maintainer.
