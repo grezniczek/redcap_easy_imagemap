@@ -73,16 +73,18 @@ function initialize(config_data, jsmo_obj) {
         // @ts-ignore
         window.reloadDesignTable = function(form_name, js) {
             log('Reloaded design table')
-            EIM_reloadDesignTable(form_name, js);
-            updateFields();
+            const result = EIM_reloadDesignTable.apply(this, arguments);
+            refreshFieldsAfterDOMUpdate(document.getElementById('draggablecontainer_parent'));
+            return result;
         }
         // @ts-ignore
         const EIM_insertRow = window.insertRow;
         // @ts-ignore
         window.insertRow = function(tblId, current_field, edit_question, is_last, moveToRowAfter, section_header, delete_row) {
             log('New row inserted: ', current_field);
-            EIM_insertRow(tblId, current_field, edit_question, is_last, moveToRowAfter, section_header, delete_row);
-            updateFields();
+            const result = EIM_insertRow.apply(this, arguments);
+            refreshFieldsAfterDOMUpdate(document.getElementById(tblId));
+            return result;
         }
         // Setup editor and events
         $editor = $('.modal.eim-editor');
@@ -115,6 +117,15 @@ function addOnlineDesignerButtons() {
     for (let fieldName of Object.keys(config.fields)) {
         log('Adding button for field ' + fieldName);
 
+        const $fieldCell = $('#design-' + fieldName + ' td.labelrc');
+        if (!$fieldCell.length) continue;
+        let $buttonContainer = $fieldCell.children('.eim-configure-container').first();
+        if (!$buttonContainer.length) {
+            $buttonContainer = $('<div class="eim-configure-container" style="position:relative;"></div>');
+            $buttonContainer.append($fieldCell.contents());
+            $fieldCell.append($buttonContainer);
+        }
+
         const $btn = $('<div class="eim-configure-button" style="position:absolute; right:0.5em; bottom:0.5em;"></div>');
         $('<button class="btn btn-defaultrc btn-xs"></button>')
             .append('<i class="fa-solid fa-draw-polygon eim-icon me-1"></i>')
@@ -141,7 +152,7 @@ function addOnlineDesignerButtons() {
             }
             return false;
         })
-        $('#design-' + fieldName + ' td.labelrc').append($btn).children().wrapAll('<div style="position:relative;"></div>');
+        $buttonContainer.append($btn);
     }
 }
 
@@ -211,13 +222,41 @@ function setupTableDnD() {
 
 
 
+function refreshFieldsAfterDOMUpdate(target) {
+    if (!target || typeof MutationObserver == 'undefined') {
+        setTimeout(updateFields, 50);
+        return;
+    }
+
+    let observer = null;
+    let fallbackTimer = null;
+    let refreshScheduled = false;
+    const refresh = function() {
+        if (!observer) return;
+        observer.disconnect();
+        observer = null;
+        clearTimeout(fallbackTimer);
+        updateFields();
+    };
+    observer = new MutationObserver(function(mutations) {
+        const tableChanged = mutations.some(mutation =>
+            mutation.type == 'childList' && (mutation.addedNodes.length || mutation.removedNodes.length)
+        );
+        if (tableChanged && !refreshScheduled) {
+            refreshScheduled = true;
+            // REDCap completes its row setup in the same task as the DOM change.
+            setTimeout(refresh, 0);
+        }
+    });
+    observer.observe(target, { childList: true, subtree: true });
+    fallbackTimer = setTimeout(refresh, 5000);
+}
+
 function updateFields() {
     JSMO.ajax('get-fields', config.form).then(function(data) {
         log('Updated fields:', data)
         config.fields = data
-        setTimeout(function() {
-            addOnlineDesignerButtons();
-        }, 0);
+        addOnlineDesignerButtons();
     });
 }
 
