@@ -9,7 +9,6 @@ message: >-
 type: software
 
 title: "Easy Imagemap (REDCap External Module)"
-short-title: "Easy Imagemap"
 
 abstract: >-
   Easy Imagemap is a REDCap External Module for turning inline images in
