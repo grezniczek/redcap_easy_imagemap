@@ -228,25 +228,7 @@ Der Quellcode des Easy Imagemap-Moduls ist unter der MIT-Lizenz lizenziert. Dies
 
 ## Zitieren dieser Software
 
-Wenn Sie dieses External Module für ein Projekt verwenden, aus dem ein Forschungsergebnis hervorgeht, zitieren Sie diese Software bitte zusätzlich zur [Zitation von REDCap](https://projectredcap.org/resources/citations/). Dies kann beispielsweise im APA-Stil erfolgen:
-
-> Rezniczek, G. A. (2026). Easy Imagemap (REDCap External Module) [Computer software]. https://doi.org/10.5281/zenodo.20555865
-
-Oder durch Aufnahme dieses Eintrags in Ihre BibTeX-Datenbank:
-
-```bibtex
-@software{Rezniczek_Easy_Imagemap_REDCap_EM_2026,
-author = {Rezniczek, Günther A.},
-doi = {10.5281/zenodo.20555865},
-title = {{Easy Imagemap (REDCap External Module)}},
-url = {https://github.com/grezniczek/redcap_imagemap},
-version = {1.0.0},
-year = {2026}
-}
-```
-
-Diese Angaben sind auch auf [GitHub](https://github.com/grezniczek/redcap_imagemap) unter "Cite This Repository" verfügbar.
-
+Bitte verwenden Sie die aus [CITATION.cff](CITATION.cff) erzeugte Zitation. Wählen Sie auf [GitHub](https://github.com/grezniczek/redcap_easy_imagemap) **Cite this repository**, um direkt nutzbare Zitierformate zu erhalten.
 
 ---
 
