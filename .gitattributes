@@ -1,7 +1,7 @@
 /.vscode export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
-/.github/ export-ignore
+/.github export-ignore
 /.zenodo.json export-ignore
 /SUPPORT.md export-ignore
 /images export-ignore
