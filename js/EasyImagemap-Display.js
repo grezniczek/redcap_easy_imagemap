@@ -413,6 +413,18 @@ function autocompleteInput(target) {
     return elementById('rc-ac-input_' + target);
 }
 
+/** Click the visible enhanced choice when present so REDCap updates its selected style. */
+function clickChoiceControl($input) {
+    const input = $input[0];
+    const $enhancedLabel = $(input?.labels).filter('div.enhancedchoice label');
+    if ($enhancedLabel.length) {
+        $enhancedLabel[0].click();
+    }
+    else {
+        $input.trigger('click');
+    }
+}
+
 /**
  * Checks the value associated with an imagemap area
  * @param {string} type 
@@ -486,7 +498,7 @@ function checkTargetDisabled(type, target, code) {
 function setTargetValue(field, id, type, target, code) {
     switch (type) {
         case 'checkbox': {
-            checkboxControl(target, code).trigger('click');
+            clickChoiceControl(checkboxControl(target, code));
             updateAreaClass(field, id, type, target, code);
         }
         break;
@@ -496,10 +508,9 @@ function setTargetValue(field, id, type, target, code) {
             if (code == '') {
                 // @ts-ignore
                 radioResetVal(target, 'form');
-                document.forms['form'][target].value = '';
             }
             else {
-                radioInput(target, code).trigger('click');
+                clickChoiceControl(radioInput(target, code));
             }
             updateAreaClass(field, id, type, target, code);
         }
