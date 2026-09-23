@@ -68,13 +68,14 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         }
         // Return if not on Online Designer / form edit mode
         if ($page != "Design/online_designer.php") return;
-        // Also, ensure there is a user with desgin rights
-        $user_name = $_SESSION["username"] ?? false;
-        $privileges = $user_name ? UserRights::getPrivileges($project_id, $user_name)[$project_id][$user_name] : false;
-        $design_rights = $privileges && $privileges["design"] == "1";
-        if (!$design_rights) return;
+        // Check that we are on the correct Designer page
         $form = $this->framework->escape($_GET["page"] ?? "");
         if (empty($form)) return;
+        // Also, ensure there is a user with desgin rights
+        if (!defined("USERID")) return;
+        $privileges = UserRights::getPrivileges($project_id, USERID)[$project_id][USERID];
+        $design_rights = $privileges && $privileges["design"] == "1";
+        if (!$design_rights) return;
 
         // Initialize
         $this->init_proj($project_id);
