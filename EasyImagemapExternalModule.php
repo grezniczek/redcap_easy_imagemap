@@ -89,9 +89,9 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
             return $this->save_codebook_preferences($payload);
         }
         $user = $this->framework->getUser($user_id);
-        $rights = $user->getRights($project_id);
+        $has_design_rights = $user->hasDesignRights($project_id);
         // All actions require design rights
-        if ($rights["design"] == "1") {
+        if ($has_design_rights) {
             switch ($action) {
                 case "get-fields":
                     return $this->get_qualifying_fields($payload);
