@@ -73,10 +73,8 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         if (empty($form)) return;
         // Also, ensure there is a user with desgin rights
         if (!defined("USERID")) return;
-        $privileges = UserRights::getPrivileges($project_id, USERID)[$project_id][USERID];
-        $design_rights = $privileges && $privileges["design"] == "1";
-        if (!$design_rights) return;
-
+        $user = $this->framework->getUser(USERID);
+        if (!$user->hasDesignRights($project_id)) return;
         // Initialize
         $this->init_proj($project_id);
         $this->init_config();
