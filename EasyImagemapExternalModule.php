@@ -19,6 +19,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     /** @var \Project */
     private $proj = null;
     private $project_id = null;
+    private $designer_context = false;
 
     const ACTIONTAG = "@EASYIMAGEMAP";
 
@@ -92,6 +93,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         $has_design_rights = $user->hasDesignRights($project_id);
         // All actions require design rights
         if ($has_design_rights) {
+            $this->designer_context = true;
             switch ($action) {
                 case "get-fields":
                     return $this->get_qualifying_fields($payload);
@@ -315,6 +317,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function setup_online_designer($form)
     {
         $this->require_proj();
+        $this->designer_context = true;
         $fields = $this->get_qualifying_fields($form);
         $ih = InjectionHelper::init($this);
         $ih->css("css/EasyImagemap-OnlineDesigner.css");
@@ -933,7 +936,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function get_project_forms()
     {
         $this->require_proj();
-        return $this->is_draft_preview() ? $this->proj->forms_temp : $this->proj->getForms();
+        return $this->is_designer_draft_mode() ? $this->proj->forms_temp : $this->proj->getForms();
     }
 
     private function get_form_fields($form_name)
@@ -949,7 +952,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function get_project_metadata()
     {
         $this->require_proj();
-        return $this->is_draft_preview() ? $this->proj->metadata_temp : $this->proj->getMetadata();
+        return $this->is_designer_draft_mode() ? $this->proj->metadata_temp : $this->proj->getMetadata();
     }
 
     private function get_field_metadata($field_name)
@@ -965,7 +968,7 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
     private function get_project_metadata_table()
     {
         $this->require_proj();
-        return $this->is_draft_preview() ? "redcap_metadata_temp" : "redcap_metadata";
+        return $this->is_designer_draft_mode() ? "redcap_metadata_temp" : $this->proj->getMetadataTable();
     }
 
     private function get_designer_save_block_message()
@@ -982,10 +985,11 @@ class EasyImagemapExternalModule extends \ExternalModules\AbstractExternalModule
         return hash("sha256", json_encode($store, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
     }
 
-    private function is_draft_preview()
+    private function is_designer_draft_mode()
     {
         $this->require_proj();
-        return intval($this->proj->project["status"] ?? 0) > 0 && intval($this->proj->project["draft_mode"]) > 0 && $GLOBALS["draft_preview_enabled"] == true;
+        // Designer requests use drafts even when record/survey draft preview is off.
+        return $this->designer_context && intval($this->proj->project["status"] ?? 0) > 0 && intval($this->proj->project["draft_mode"] ?? 0) > 0;
     }
 
     private function get_salt()
