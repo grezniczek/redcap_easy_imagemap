@@ -2,6 +2,7 @@
 
 | Version | Changes |
 | --- | --- |
+| 1.1.4 | Bugfix: Fixed Online Designer errors for draft-only instruments in production projects when draft preview is disabled. Imagemap editing and saving now use draft forms, field metadata, and the draft metadata table while preserving published metadata for normal data entry and surveys. |
 | 1.1.3 | Bugfix: Super users without explict design rights in a project were not able to load the imagemap editor. |
 | 1.1.2 | More robust design rights determination. |
 | 1.1.1 | Fixed imagemap area clicks on surveys so enhanced radio and checkbox buttons visibly reflect the selected value. Fixed enhanced radio button styling when an imagemap area resets the field. |
